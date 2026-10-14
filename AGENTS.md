@@ -1,5 +1,7 @@
 # AGENTS.md — DriveHire & Carpool
 
+The approved product schema, endpoint catalogue, role matrix, state machines, and release design live in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Keep it as the single source of truth and update `docs/DECISIONS.md` whenever an implementation choice deviates. UI implementation must follow [`docs/DESIGN.md`](docs/DESIGN.md) once Prompt 4.5 adds it.
+
 ## Stack (fixed)
 - Frontend: React 18 + Vite + TypeScript, React Router, Axios, TanStack Query, React Hook Form + Zod, Tailwind CSS
 - Backend: Node.js 20 + Express + TypeScript, layered `routes -> controllers -> services -> repositories`
