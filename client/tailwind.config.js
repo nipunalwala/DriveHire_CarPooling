@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
-  theme: { extend: { colors: { ink: '#172033', accent: '#087E8B' } } },
+  darkMode: 'class',
+  theme: { extend: { colors: { ink: '#172033', accent: '#086b67' } } },
   plugins: []
 };

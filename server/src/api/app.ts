@@ -10,6 +10,7 @@ import { AppError } from '../errors/AppError';
 import { globalLimiter } from '../middleware/rateLimits';
 import { errorHandler } from '../middleware/errorHandler';
 import { checkDatabase } from '../repositories/healthRepository';
+import { contactRoutes } from '../routes/contactRoutes';
 
 export function createApp() {
   const app = express();
@@ -46,6 +47,7 @@ export function createApp() {
       return next(new AppError('NOT_READY', 503, 'Database is not ready'));
     }
   });
+  app.use('/api/v1/contact', contactRoutes);
   app.use((_req, res) =>
     res
       .status(404)
