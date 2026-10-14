@@ -2,7 +2,7 @@
 
 Statuses: `TODO`, `DOING`, `DONE`. Keep prior phase tests green and add regression tests for shared code.
 
-- [ ] Prompt 4 — Foundation and production infrastructure
+- [DONE] Prompt 4 — Foundation and production infrastructure (lint, typecheck, 12 tests, build, Docker build and health checks passed)
 - [ ] Prompt 4.5 — Design system, app shells, public website
 - [ ] Prompt 5 — Authentication and users
 - [ ] Prompt 6 — Driver management
