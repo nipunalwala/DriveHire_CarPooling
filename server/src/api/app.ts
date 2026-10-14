@@ -11,6 +11,8 @@ import { globalLimiter } from '../middleware/rateLimits';
 import { errorHandler } from '../middleware/errorHandler';
 import { checkDatabase } from '../repositories/healthRepository';
 import { contactRoutes } from '../routes/contactRoutes';
+import { authRoutes } from '../routes/authRoutes';
+import { userRoutes } from '../routes/userRoutes';
 
 export function createApp() {
   const app = express();
@@ -48,6 +50,8 @@ export function createApp() {
     }
   });
   app.use('/api/v1/contact', contactRoutes);
+  app.use('/api/v1/auth', authRoutes);
+  app.use('/api/v1/users', userRoutes);
   app.use((_req, res) =>
     res
       .status(404)

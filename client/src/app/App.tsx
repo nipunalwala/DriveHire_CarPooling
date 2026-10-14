@@ -1,10 +1,12 @@
-import { Link, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { ErrorBoundary } from './ErrorBoundary';
 import { api } from '../lib/api';
 import { DesignPage } from './DesignPage';
-import { AuthLayout } from '../components/layouts/AuthLayout';
 import { DashboardLayout } from '../components/layouts/DashboardLayout';
+import { AuthPage } from './AuthPages';
+import { useAuth } from './AuthContext';
+import { ChangePasswordPage, ProfilePage } from './UserSettingsPage';
 
 function usePageMetadata(title: string, description: string) {
   useEffect(() => {
@@ -401,31 +403,40 @@ function Placeholder({ title, description }: { title: string; description?: stri
     </PublicLayout>
   );
 }
-function AuthPlaceholder({ title, description }: { title: string; description: string }) {
-  usePageMetadata(title, description);
-  return (
-    <AuthLayout>
-      <p className="eyebrow">Your next journey starts here</p>
-      <h1>{title}</h1>
-      <p>{description}</p>
-      <Link to="/register" className="button primary">
-        Create your account
-      </Link>
-      <p>
-        <Link to="/">Back to DriveHire</Link>
-      </p>
-    </AuthLayout>
-  );
-}
 function DashboardPreview() {
   usePageMetadata('Dashboard', 'Your journeys and bookings in one place.');
+  const { user, loading } = useAuth();
+  if (loading)
+    return (
+      <main className="simple">
+        <div className="skeleton" role="status" aria-label="Loading dashboard" />
+      </main>
+    );
   return (
-    <DashboardLayout>
-      <p className="eyebrow">Passenger dashboard</p>
-      <h1>Your journeys, together.</h1>
+    <DashboardLayout role={user?.role ?? 'passenger'}>
+      <p className="eyebrow">{user?.role ?? 'Passenger'} dashboard</p>
+      <h1>Welcome, {user?.full_name ?? 'traveler'}.</h1>
       <p className="muted">Bookings and shared rides will appear here.</p>
     </DashboardLayout>
   );
+}
+function ProtectedRoute({
+  children,
+  roles
+}: {
+  children: ReactNode;
+  roles?: Array<'passenger' | 'driver' | 'owner' | 'admin'>;
+}) {
+  const { user, loading } = useAuth();
+  if (loading)
+    return (
+      <main className="simple">
+        <div className="skeleton" role="status" aria-label="Loading your account" />
+      </main>
+    );
+  if (!user || user.status !== 'active') return <Navigate to="/login" replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
 }
 const info: Record<string, string> = {
   about:
@@ -476,25 +487,59 @@ export function App() {
           path="/privacy"
           element={<InfoPage title="Privacy, in plain language" description={info.privacy ?? ''} />}
         />
+        <Route path="/login" element={<AuthPage mode="login" />} />
+        <Route path="/register" element={<AuthPage mode="register" />} />
+        <Route path="/verify-otp" element={<AuthPage mode="verify" />} />
+        <Route path="/forgot-password" element={<AuthPage mode="forgot" />} />
+        <Route path="/reset-password" element={<AuthPage mode="reset" />} />
         <Route
-          path="/login"
+          path="/dashboard"
           element={
-            <AuthPlaceholder
-              title="Welcome back"
-              description="Sign-in forms are part of account setup."
-            />
+            <ProtectedRoute roles={['passenger']}>
+              <DashboardPreview />
+            </ProtectedRoute>
           }
         />
         <Route
-          path="/register"
+          path="/driver"
           element={
-            <AuthPlaceholder
-              title="Create your account"
-              description="Join people making everyday travel simpler."
-            />
+            <ProtectedRoute roles={['driver']}>
+              <DashboardPreview />
+            </ProtectedRoute>
           }
         />
-        <Route path="/dashboard" element={<DashboardPreview />} />
+        <Route
+          path="/owner"
+          element={
+            <ProtectedRoute roles={['owner']}>
+              <DashboardPreview />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute roles={['admin']}>
+              <DashboardPreview />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/change-password"
+          element={
+            <ProtectedRoute>
+              <ChangePasswordPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/design"
           element={import.meta.env.DEV ? <DesignPage /> : <Placeholder title="Page not found" />}

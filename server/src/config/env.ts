@@ -26,7 +26,10 @@ const schema = z.object({
   SMTP_PORT: z.coerce.number().default(587),
   SMTP_USER: z.string().optional().default(''),
   SMTP_PASS: z.string().optional().default(''),
-  MAIL_FROM: z.string().default('DriveHire <no-reply@example.com>')
+  MAIL_FROM: z.string().default('DriveHire <no-reply@example.com>'),
+  ADMIN_EMAIL: z.string().email().optional(),
+  ADMIN_PASSWORD: z.string().min(12).optional(),
+  ADMIN_FULL_NAME: z.string().min(2).default('DriveHire Administrator')
 });
 export type Env = z.infer<typeof schema>;
 
