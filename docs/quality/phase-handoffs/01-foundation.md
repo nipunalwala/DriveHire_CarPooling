@@ -28,7 +28,7 @@ These commands ran locally with Node24.22.0. HTTP/Docker tests needed execution 
 | `npm run lint`                 | ESLint and AST import-boundary check passed                                                                        |
 | `npm run docs:check`           | 21 specs/25 guides/30 FR/96 operations/55 screens references valid; formal OpenAPI validation passed               |
 | `npm run format:check`         | Matched files passed Prettier                                                                                      |
-| `npm run build`                | API/contracts/web production builds passed; web JS89.66KiB gzip in observed build                                  |
+| `npm run build`                | API/contracts/web production builds passed; web JS89.66kB gzip in observed build                                   |
 | Docker API/web build targets   | Both built; runtime users `node`/UID1000 and nginx UID101                                                          |
 | Temporary container HTTP smoke | API health200, readiness503; nginx unknown SPA path200 with CSP header                                             |
 | Browser inspection             | Built web shell rendered in in-app browser at narrow viewport with readable text and route recovery covered by RTL |

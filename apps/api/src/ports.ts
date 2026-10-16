@@ -1,4 +1,7 @@
-export type DomainEvent<TName extends string, TPayload extends Readonly<Record<string, unknown>>> = Readonly<{
+export type DomainEvent<
+  TName extends string,
+  TPayload extends Readonly<Record<string, unknown>>,
+> = Readonly<{
   id: string;
   eventType: TName;
   aggregateType: string;
