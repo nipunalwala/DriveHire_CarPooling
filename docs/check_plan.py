@@ -6,6 +6,7 @@ import re
 import sys
 from pathlib import Path
 from urllib.parse import unquote
+from check_scope import validate_scope
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
@@ -55,12 +56,13 @@ for screen in SCREENS:
 reqs = MODEL['requirements']
 req_ids = {r['id'] for r in reqs}
 check(len(req_ids) == len(reqs), 'duplicate FR ID')
-check(len(reqs) >= 25, 'major FR coverage unexpectedly low')
+check(bool(reqs), 'active requirement inventory is empty')
+milestone_count = len(MODEL['phases']) - 1
 for req in reqs:
     for field in ('title','actor','pre','trigger','flow','alt','errors','post','accept','phase','ops','entities','screens','test'):
         check(bool(req.get(field)), f"{req['id']} missing {field}")
     for phase in req['phase'].split(','):
-        check(phase.isdigit() and 1 <= int(phase) <= 24, f"{req['id']} invalid phase {phase}")
+        check(phase.isdigit() and 1 <= int(phase) <= milestone_count, f"{req['id']} invalid phase {phase}")
     for op in req['ops']:
         check(op in opmap, f"{req['id']} unknown API {op}")
     for entity in req['entities'].split(','):
@@ -70,17 +72,25 @@ for req in reqs:
     check(req['id'] in (DOCS / 'specification/19-requirements-traceability.md').read_text(encoding='utf-8'), f"{req['id']} absent traceability")
     check(req['test'] in (DOCS / 'specification/18-acceptance-criteria.md').read_text(encoding='utf-8'), f"{req['id']} absent acceptance")
 
-for i in range(1, 25):
+for i in range(2, milestone_count + 1):
     name = MODEL['phases'][i]
     body = (DOCS / 'implementation-prompts' / f'{i:02d}-{name}.md').read_text(encoding='utf-8')
-    for heading in 'ABCDEFGHIJKLMNOP':
-        check(re.search(r'^## '+heading+r'\. ', body, re.M) is not None, f'phase {i:02d} missing section {heading}')
+    for heading in ('Global Constraints', 'Review Focus', 'File responsibilities', 'Milestone completion'):
+        check(f'## {heading}' in body, f'phase {i:02d} missing section {heading}')
+    check('### Task 1:' in body and '- [ ]' in body, f'phase {i:02d} lacks executable task steps')
     check('red' in body.lower() and 'green' in body.lower(), f'phase {i:02d} missing TDD gate')
 master = (DOCS / 'implementation-prompts/00-MASTER-EXECUTION-GUIDE.md').read_text(encoding='utf-8')
-for heading in 'ABCDEFGHIJKLMNOP':
-    check(re.search(r'^## '+heading+r'\. ', master, re.M) is not None, f'master missing section {heading}')
+for heading in ('Milestones and gates', 'Execution requirements', 'Active evidence IDs'):
+    check(f'## {heading}' in master, f'master missing section {heading}')
 for req in reqs:
     check(req['id'] in master and req['test'] in master, f"master missing {req['id']} trace")
+
+errors.extend(validate_scope(MODEL, CONTRACT, SCREENS))
+deferred_entities = set(MODEL.get('deferred', {}).get('entities', []))
+check(not db_entities.intersection(deferred_entities), 'deferred schema entity is still active')
+active_prompts = {p.name for p in (DOCS / 'implementation-prompts').glob('*.md')}
+expected_prompts = {f'{i:02d}-{name}.md' for i, name in enumerate(MODEL['phases'])}
+check(active_prompts == expected_prompts, 'active prompt inventory contains missing or superseded milestones')
 
 for md in [ROOT / 'README.md', ROOT / 'AGENTS.md', ROOT / 'PRODUCT.md', *DOCS.rglob('*.md')]:
     body = md.read_text(encoding='utf-8')
@@ -100,4 +110,4 @@ if errors:
     for error in errors:
         print('-', error)
     sys.exit(1)
-print(f"PASS: 21 specifications, 25 phase guides, {len(reqs)} FRs, {len(opmap)} API operations, {len(SCREENS)} screens; links, refs and trace IDs resolved")
+print(f"PASS: {len(MODEL['specifications'])} specifications, {milestone_count} milestones, {len(reqs)} FRs, {len(opmap)} API operations, {len(SCREENS)} screens; links, refs, lean scope and trace IDs resolved")

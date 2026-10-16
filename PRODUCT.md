@@ -3,31 +3,41 @@
 <!-- impeccable:product-schema 1 -->
 
 ## Platform
+
 web
 
 ## Stack
-User-specified React/Vite/TypeScript/Tailwind frontend, Express/TypeScript backend, PostgreSQL/Prisma, API-backed modular monolith.
+
+React/Vite/TypeScript/Tailwind; Express API/worker; PostgreSQL/Prisma modular monolith.
 
 ## Users
-Passenger finds a vehicle, hired driver, combined service or scheduled carpool. Approved driver receives hire assignments and may host with their own approved vehicle. Owner registers vehicles and consents to bookings. Administrator verifies providers, handles incidents and complaints.
+
+Passenger hires an approved external driver for their own approved vehicle or instantly joins a scheduled carpool. Approved driver accepts hire work and may host using their own approved vehicle. Administrator reviews qualification, accounts and essential incidents. Vehicle ownership is a relationship, with no separate owner dashboard.
 
 ## Product Purpose
-Provide persisted, reliable vehicle hire and seat-sharing workflows with role-specific operation, clear qualification and accurate availability. Success is a completed real API-backed journey without overlapping physical bookings or overbooked seats.
+
+Deliver two reliable persisted journeys with accurate availability and safe seat capacity. Success is usable driver hiring and carpool participation without overlapping physical use, exposed private evidence or false confirmations.
 
 ## Operating Context
-Manual city catalogue, scheduled UTC instants, uploaded private verification documents, email OTP, approval decisions, manual trip status and simulated route markers.
+
+Curated cities/timezones, scheduled UTC intervals, private scanned evidence, email verification, basic manual administrator review and manual trip states. No location tracking or navigation.
 
 ## Capabilities and Constraints
-Four additive roles. No online payment, maps, GPS or external navigation. Prices are estimates and not collected by platform. Operating currency/market default INR/India is a proposed planning decision pending owner confirmation before public launch. Public imagery will be original generated explanatory assets; listings use actual clean provider uploads.
+
+PASSENGER/DRIVER/ADMIN, driver hiring and INSTANT carpools. No rentals, combined bookings, reviews, owner/fleet UI, product notification centre, advanced analytics/complaints or approval seats. No online payments/maps/GPS. INR paise estimates; “Payment not collected by DriveHire.” Authentication emails remain real. Initial English/India catalogue is a product default, not a commercial operating claim.
 
 ## Brand Commitments
-DriveHire & CarPooling Platform. Premium modern design with excellent usability, guided by Impeccable and the UI specification. Historical DriveHire wordmark/deep teal serve as proposed direction, not an immutable approved brand asset.
+
+DriveHire & CarPooling. Impeccable guides a compact, clear, polished interface. Original generated editorial images explain the two services and are committed with provenance; never impersonate actual drivers, vehicles, customers or evidence. Deep teal is a proposed visual direction; assess actual readability and contrast.
 
 ## Evidence on Hand
-No verified customer claims, testimonials, partner logos, vehicle listings or production operating statistics are provided. Never fabricate them.
+
+Verified foundation only. No real inventory, customer claims, testimonials, partner logos or production statistics are supplied; never fabricate them.
 
 ## Product Principles
-Persistent truth over presentation; clear service eligibility; race-safe capacity; privacy of identity documents; useful next action in each role workspace.
+
+Server-persisted truth, clear eligibility, safe physical resources/seats, privacy, useful recovery and task-focused screens.
 
 ## Accessibility & Inclusion
-WCAG2.2 AA target, keyboard use, responsive320px through desktop, reduced motion and accurate labels for simulated route/estimated fare.
+
+WCAG2.2 AA target, keyboard/focus support, responsive320px through desktop, reduced motion and explicit estimate/status copy.

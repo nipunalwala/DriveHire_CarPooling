@@ -1,0 +1,7 @@
+# DriveHire planning and implementation boundaries
+
+Canonical documents are `docs/specification/`, `docs/api/openapi.json`, `docs/implementation-prompts/`, and `docs/specification/20-architecture-decisions.md`. The user approved Phase01; see `docs/planning/approval-log.md`. Do not restore historical Knex or single-role architecture. User instructions supersede this file and skill defaults.
+
+Follow the relevant phase prompt and Superpowers planning/test/verification/review workflow after approval. Use Impeccable for frontend design and the imagegen skill for original project raster assets as specified in `docs/design/image-assets.md`. Keep generated selected assets in repository with provenance; use real clean uploads for vehicle listings. Every backend change preserves current role/object authorization, transaction-safe physical resource/seat constraints, immutable history/audit, outbox and no-payment/no-GPS scope. Document material decisions and forward migrations. Never claim a command passed without its output.
+
+Before any implementation: read the master guide, current phase prompt, relevant specs, OpenAPI and previous handoff; verify branch and existing tests. Use Node24.22.0/npm11.19.1. Source layout is `apps/api`, `apps/web`, `packages/contracts`; `npm test` runs current unit and contract suites. Real local service checks require the dedicated test Compose project. Do not claim unavailable future suites passed or create Phase02 business schema during Phase01. Never merge main or launch production without the authorized integration decision.

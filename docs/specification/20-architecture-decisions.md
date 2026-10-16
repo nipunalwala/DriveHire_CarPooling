@@ -1,132 +1,27 @@
-# 20 · Architecture Decisions
+# 20 · Active architecture decisions
 
-Status: proposed implementation baseline; implementation requires separate human approval.
+Historical ADR001–018 are preserved in the archived full-platform baseline. Decisions below are the current lean authority; historical reasoning for removed modules does not reactivate them.
 
-## Decision status
-ADRs001 and017 follow explicit user direction. Other decisions are recommended baseline choices to be approved with the plan; changing a material decision requires a new ADR before implementing affected phase.
+## ADR019 · Lean scope approved2026-10-17
 
-### ADR001 · Use existing repository
-**Decision/rationale:** User explicitly changed new-repository directive to same repo; preserve .git/history/remote; use review branch and no force-push.
+Problem: the24-phase platform carried more breadth than the owner wanted. Alternatives: keep full scope but combine phase labels; launch one service only; retain driver hiring and carpools with optional modules deferred. Owner approved the third approach and then the written lean design. Eight milestones include completed01; seven remain. Rentals, combined consent, reviews, owner/fleet UI, notifications, advanced reports/complaints, approval seats, replacement and waypoint tracking are deferred. Cost: participants refresh app state and use cancel/new booking; future modules need new explicit scope.
 
-**Consequence:** No new private-repo guarantee or visibility/license change.
+## ADR020 · Ownership without owner subsystem
 
-**Alternatives considered:** New repository discarded by updated user instruction.
+Personal vehicles remain necessary for safe driver hiring and hosting. Model vehicles.owner_id -> users, enforce immutable ownership and current approval; PASSENGER/DRIVER/ADMIN roles only. No owner profile, rental charge/listing/availability APIs or separate dashboard. Safe public carpool vehicle summary is embedded, never a public evidence/registration endpoint. Cost: no fleet/rental product; adding it later requires forward migration and new contract review. Foundation OWNER enum is retired during contract implementation, not silently treated as a grant.
 
-### ADR002 · Modular monolith
-**Decision/rationale:** Inventory/seat/audit/outbox need atomic DB boundary; one API+same-code worker cheaper to reason about than distributed services.
+## ADR021 · Instant seats and single provider consent
 
-**Consequence:** Module contracts and lock protocol must remain strict.
+Only DRIVER_HIRE and INSTANT join. One DRIVER decision confirms hire; accepted seat insert reserves capacity immediately. No owner decision, pending approval seat, replacement or simulated route UI. Shared driver+vehicle exclusion and active-use guards remain, since both retained services use physical resources. Cost: reduced optional workflows; cancellation/recreation required for material changes.
 
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
+## ADR022 · Authentication email only
 
-### ADR003 · Additive roles and separate verification
-**Decision/rationale:** Identity may be passenger,driver,owner simultaneously; role unlocks onboarding, approval unlocks provision.
+Retain a narrowly typed durable authentication-email outbox with private authenticated encryption and real SMTP worker. Remove product event producers, delivery-channel tables and in-app feed; use persisted booking/ride screens for current status. History/audit writes remain atomic with domain changes. Cost: no proactive booking notifications until explicitly added.
 
-**Consequence:** No client primary-role authority; current DB status checked.
+## ADR023 · Preserve verified foundation; deliver vertical journeys
 
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR004 · Prisma with custom PostgreSQL SQL
-**Decision/rationale:** Required stack; GiST exclusions/partial uniques and row locks exceed declarative schema features.
-
-**Consequence:** Pin compatible supported major/patch; raw SQL reviewed and catalog tested.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR005 · Shared typed resource reservations
-**Decision/rationale:** One driver/vehicle can be in hire,carpool or blocked; separate booking-only constraints miss conflicts.
-
-**Consequence:** Reserve both for each service including requester self-supplied resource.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR006 · Explicit availability windows and manual cities
-**Decision/rationale:** No GPS/maps/recurrence dependency; finite windows make coverage/time policy clear.
-
-**Consequence:** City-pair matching has no geographic proximity guarantee.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR007 · All hire modes have verified physical vehicle/driver
-**Decision/rationale:** Self-drive uses approved requester; driver hire owned registered vehicle; combined chosen external resources.
-
-**Consequence:** Restricts unverified off-platform cars; product decision for final approval.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR008 · Provider consent with expiring holds
-**Decision/rationale:** Owner and hired driver explicitly agree; hold30min avoids double promising while waiting.
-
-**Consequence:** Pending consumes inventory; expiry guard must work without worker.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR009 · Carpool pending requests do not reserve seats
-**Decision/rationale:** Prevents speculative request hoarding; acceptance/instant join consumes seats atomically.
-
-**Consequence:** Pending is not guaranteed seat; UI must distinguish.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR010 · Database outbox and polling
-**Decision/rationale:** Durable event commit avoids lost in-process notifications; polling adequate without realtime.
-
-**Consequence:** Worker leases/dedupe/retry/dead letters mandatory.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR011 · No payments, no revenue claims
-**Decision/rationale:** Explicit scope excludes processing; server estimate snapshot only.
-
-**Consequence:** Display NOT_COLLECTED, no paid/refund/wallet states.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR012 · Strict refresh rotation with current-session checks
-**Decision/rationale:** Opaque tokens hash stored, replay family revocation and DB active checks provide immediate logout/suspension.
-
-**Consequence:** Browser tab coordination required; lost response can require re-login.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR013 · Private scanned documents and immutable revisions
-**Decision/rationale:** Qualification evidence must not leak or be swapped after admin review.
-
-**Consequence:** Scanner/private storage and encryption configured, no fake CLEAN bypass.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR014 · Manual lifecycle and resource overrun guard
-**Decision/rationale:** No live GPS; elapsed planned end cannot prove actual release.
-
-**Consequence:** Operator incident workflow blocks next physical use until resolved.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR015 · Derived visible rating aggregates
-**Decision/rationale:** SQL count/avg avoids stale cache after moderation and duplicate writes.
-
-**Consequence:** Indexed queries initially; materialization only after measured need.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR016 · Proposed initial locale/design
-**Decision/rationale:** INR/English/manual city catalogue and teal travel-operations UI align brief and historical context.
-
-**Consequence:** Proposed defaults for approval, not claims of commercial launch readiness.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR017 · Documentation-only first delivery
-**Decision/rationale:** User explicitly gates implementation after complete reviewed plan.
-
-**Consequence:** No package.json, app scaffold, live DB migration or installed application dependency in planning commit.
-
-**Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
-
-### ADR018 · Supported Phase01 runtime and reproducibility
-
-Phase01 uses Node24.22.0/npm11.19.1 and exact direct dependency pins plus lockfile. A checksum-verified portable Windows runtime avoids changing the installed system Node20. TypeScript5.9.3 satisfies the supported lint-tool peer range; the registry's TypeScript7 tag is not selected. Prisma7.10.1 is the stable schema/Migrate candidate for02 because the registry's latest8 tag is a release candidate; schema/ORM packages are intentionally not installed until02. Docker base/service image digests are pinned after successful pull/build. Startup does not create missing business schema: readiness503 and worker waiting are truthful until02. Root scripts include only implemented suites in current `npm test`; future schema/E2E commands exit2 explicitly. See [toolchain](../operations/toolchain.md) and [development](../operations/development.md).
+Same repository/current branch, strict workspace boundaries, Node24.22.0/npm11.19.1, TypeScript5.9 and locked dependencies retained. Prisma7.10.1 is the prior candidate, not an installed or future-verified dependency; verify stable adapter/client compatibility at milestone02. Introduce UI foundations with first auth screens; driver hire/carpool milestones include API+database+UI. Impeccable and generated imagery remain. Cost: fewer handoffs, but each feature milestone contains frontend/backend tasks and its own regression tests.
 
 ## Change protocol
-Record date,problem,alternatives,decision,evidence,affected FR/API/entity/UI/phase IDs, migration/backward-compatibility implications and approval when scope changes. Update all impacted canonical files together and rerun docs/contract checks. Applied migrations immutable; code follows latest accepted specification, not retired architecture or historical AGENTS.md. Minor implementation file naming can vary without ADR if module boundaries/contracts unchanged. Ask only for a material scope/architecture decision not resolved by current user direction.
+
+No business migration exists; this scope change changes documentation/OpenAPI only. Archive old baseline, reconcile active requirements/schema/API/screens/prompts together and verify links/refs/scope checks. Detailed plans require owner review before feature implementation. No main merge, push, repository visibility change or production launch is implied.

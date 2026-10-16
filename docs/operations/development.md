@@ -18,7 +18,7 @@ Test services are isolated from dev: `docker compose -f compose.test.yml up -d -
 
 The test database uses tmpfs; stopping its container discards it. Its scanner signature cache is a dedicated test volume. To stop only these test services use `docker compose -f compose.test.yml down`; remove its named scanner cache only when deliberately refreshing test fixtures. Never run volume deletion on a computed/unverified project name or on another application's database.
 
-Application E2E and Prisma schema/migration/constraint commands exit2 with an explicit unavailable message until their owning phase. They are not included in the current passing test count. No authentication, booking, seat reservation, upload or product dashboard exists yet. Original generated imagery and the full Impeccable design system remain assigned to13/14; this phase provides an honest minimal shell.
+Application E2E and Prisma schema/migration/constraint commands exit2 with an explicit unavailable message until their owning phase. They are not included in the current passing test count. No authentication, booking, seat reservation, upload or product dashboard exists yet. Shared UI begins with milestone03; original generated imagery and Impeccable polish belong to milestone07 in the approved lean roadmap. The completed foundation provides a minimal shell.
 
 ## Recovery and boundaries
 

@@ -1,3 +1,5 @@
+> Historical pre-foundation assessment. Current state: foundation complete, approved lean scope, detailed plan awaiting review. The observations below describe2026-10-16 and are not current execution restrictions.
+
 # Workspace assessment and approved clean start
 
 Inspected on 2026-10-16 before documentation work. Working directory `C:\Coding\DriveHire` contained `.git` only. Git HEAD was `18c3e1dd664f92927a931be0e31a8ca5860e1607` on `main`, six commits ahead of the locally recorded `origin/main`; remote `origin` is `https://github.com/nipunalwala/DriveHire_CarPooling.git`, remote main was verified as `5ff5500a1bd248aa552d356aa587d4359950943a`. All 101 tracked previous-app files were already absent in the working tree, including React client, Express server, Knex migrations, Docker/CI config, README and historical architecture/design docs. Git status displayed 101 staged? No: deletions were **unstaged** at inspection. Historical commits retain recoverable work. No environment/credential files physically present; historical `.env.example` used names/placeholders but a full Git-history secret scan is a future release gate, not an asserted clean history.

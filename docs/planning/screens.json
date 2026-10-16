@@ -3,629 +3,388 @@
     "key": "landing",
     "route": "/",
     "role": "Public",
-    "purpose": "Choose rental, driver hire, combined booking or carpool without confusing eligibility",
-    "layout": "Editorial public shell with full-width service selector and useful departure form",
-    "components": "Wordmark, service tabs, city/date search, concise eligibility explanation, honest how-it-works, provider CTAs",
-    "ops": [
-      "listCities",
-      "searchVehicles",
-      "searchDrivers",
-      "searchCarpools"
-    ],
-    "interaction": "Tabs retain separate fields; search navigates with URL filters; provider CTA starts role onboarding",
-    "empty": "No invented inventory counts or testimonials; explain launch catalogue if empty",
-    "error": "City service failure has retry and preserves service choice",
-    "success": "Search displays real matching results",
-    "responsive": "Single-column form320px; split service explanation desktop; primary action in flow"
-  },
-  {
-    "key": "about",
-    "route": "/about",
-    "role": "Public",
-    "purpose": "Explain operating model and verification boundaries",
-    "layout": "Reading layout, short product story plus service comparison",
-    "components": "Service table, manual verification explanation, scope and support link",
-    "ops": [],
-    "interaction": "Navigate to services and registration",
-    "empty": "Use factual copy; omit unverified company claims",
-    "error": "Global fallback for navigation failure",
-    "success": "Reader can identify platform limitations",
-    "responsive": "Reading width68ch, no clipped comparison"
-  },
-  {
-    "key": "services",
-    "route": "/services",
-    "role": "Public",
-    "purpose": "Compare three hire modes and carpools",
-    "layout": "Public comparison matrix and service-specific next action",
-    "components": "Eligibility rows, pricing example explicitly illustrative, no payment claims",
+    "purpose": "Driver hiring and carpooling",
     "ops": [
       "listCities"
     ],
-    "interaction": "Choose service -> preselected search mode",
-    "empty": "If catalogue missing retain explanation",
-    "error": "Search dependency retry at control",
-    "success": "Service selection persists in URL",
-    "responsive": "Cards mobile; semantic matrix desktop"
-  },
-  {
-    "key": "vehicle-listings",
-    "route": "/vehicles",
-    "role": "Public",
-    "purpose": "Find approved vehicles by city, category, capacity and time",
-    "layout": "Search/filter rail with result list and pagination",
-    "components": "Filter form, vehicle photo, rate/hour, verification badge, time notice",
-    "ops": [
-      "listCities",
-      "searchVehicles"
-    ],
-    "interaction": "URL-backed filters; clear/page; open detail; no optimistic availability claim",
-    "empty": "No vehicles for dates: clear filters/change city/dates",
-    "error": "Inline retry with filters retained; no stale result labelled available",
-    "success": "Result count and advisory availability shown",
-    "responsive": "Filter drawer mobile with apply button and focus return; rail desktop"
-  },
-  {
-    "key": "vehicle-detail",
-    "route": "/vehicles/:id",
-    "role": "Public",
-    "purpose": "Assess actual vehicle and begin eligible booking",
-    "layout": "Large real vehicle image plus facts; sticky in-flow booking panel desktop",
-    "components": "Image gallery, specs, rating list, date form, price estimate and self-drive rule",
-    "ops": [
-      "getVehicle",
-      "vehicleReviews",
-      "getDocument"
-    ],
-    "interaction": "Select dates/service; authenticated quote; no document download",
-    "empty": "No reviews: honest zero count; missing image neutral vehicle silhouette",
-    "error": "404 unavailable; quote409 reload resources",
-    "success": "Continue to quote with authoritative totals",
-    "responsive": "Booking panel stacks before long reviews mobile"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/public/LandingPage.tsx"
   },
   {
     "key": "driver-listings",
     "route": "/drivers",
     "role": "Public",
-    "purpose": "Find approved available drivers",
-    "layout": "Search rail/results consistent with vehicle surface",
-    "components": "City/date/rate/rating filters, driver profile row, availability advisory",
+    "purpose": "Find eligible drivers",
     "ops": [
       "listCities",
       "searchDrivers"
     ],
-    "interaction": "Choose driver, keep search context in detail/back navigation",
-    "empty": "No drivers: adjust dates/city",
-    "error": "Dependency retry; retain fields",
-    "success": "Verified eligible profiles shown",
-    "responsive": "Mobile filter drawer; long names wrap"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/drivers/DriverListingsPage.tsx"
   },
   {
     "key": "driver-detail",
     "route": "/drivers/:id",
     "role": "Public",
-    "purpose": "Review driver skills, rating and hire requirements",
-    "layout": "Profile masthead, facts, rate/booking panel, review list",
-    "components": "Approval badge, bio, service city, review summary, own-vehicle requirement",
+    "purpose": "Driver profile and hire action",
     "ops": [
-      "getDriver",
-      "driverReviews"
+      "getDriver"
     ],
-    "interaction": "Choose DRIVER_HIRE/COMBINED and dates; login safe returnTo",
-    "empty": "No ratings: first review explanation",
-    "error": "404 private/ineligible; query retry",
-    "success": "Selection transfers driver ID to booking form",
-    "responsive": "One column mobile, booking panel near main action"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/drivers/DriverDetailPage.tsx"
   },
   {
     "key": "carpool-search",
     "route": "/carpools",
     "role": "Public",
-    "purpose": "Find published rides by city pair/date/seats",
-    "layout": "Departure search band and schedule-like results",
-    "components": "Origin/destination city controls, date, seats, departure/timezone, seats left, price/seat",
+    "purpose": "Find scheduled seats",
     "ops": [
       "listCities",
       "searchCarpools"
     ],
-    "interaction": "URL filters; swap city; open ride; date uses origin timezone",
-    "empty": "No rides: choose adjacent date explicitly, no fabricated alternatives",
-    "error": "Invalid same-city field error; server retry",
-    "success": "Real published seat availability displayed",
-    "responsive": "Compact vertical itinerary mobile; no maps"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/carpools/CarpoolSearchPage.tsx"
   },
   {
     "key": "carpool-detail",
     "route": "/carpools/:id",
-    "role": "Public/participant",
-    "purpose": "Understand route, host, seats and join mode",
-    "layout": "Text route spine with host/vehicle context and reservation panel",
-    "components": "City/time, pickup notes, manual markers, capacity, join mode, cost estimate, seats form",
+    "role": "Public",
+    "purpose": "Safe ride summary and instant join",
     "ops": [
       "getCarpool",
-      "requestSeat",
-      "getDriver",
-      "getVehicle"
+      "requestSeat"
     ],
-    "interaction": "Join -> instant ACCEPTED or PENDING; preserve key on retry; active requester sees cancel",
-    "empty": "Full ride: disable request with clear count; no draft leakage",
-    "error": "409 final seat refreshes count and retains intended seats",
-    "success": "Status accurately says requested or accepted; payment not collected",
-    "responsive": "Booking panel follows route mobile; roster never public"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/carpools/CarpoolDetailPage.tsx"
   },
   {
     "key": "login",
     "route": "/login",
     "role": "Public",
-    "purpose": "Sign in securely",
-    "layout": "Focused auth shell with small service context",
-    "components": "Email/password, show password toggle, reset link, verified feedback",
+    "purpose": "Sign in",
     "ops": [
       "login"
     ],
-    "interaction": "Submit once; memory token; safe returnTo; show OTP resend link on unverified",
-    "empty": "No session: normal entry",
-    "error": "Generic credentials error; 429 countdown; suspended support message",
-    "success": "Redirect to safe requested route or role overview",
-    "responsive": "Keyboard-safe compact form; no fixed viewport clipping"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/LoginPage.tsx"
   },
   {
     "key": "register",
     "route": "/register",
     "role": "Public",
-    "purpose": "Create account and start email verification",
-    "layout": "Auth shell single form",
-    "components": "Name,email,password, requirements text, sign-in link",
+    "purpose": "Create account",
     "ops": [
       "register"
     ],
-    "interaction": "Submit -> verify screen; do not expose email existence",
-    "empty": "No preselected provider/admin role",
-    "error": "Inline422, generic202 ack, network preserves safe fields",
-    "success": "Verification instructions without login claim",
-    "responsive": "320px fields full width; password manager autocomplete"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/RegisterPage.tsx"
   },
   {
     "key": "verify-email",
     "route": "/verify-email",
     "role": "Public",
-    "purpose": "Consume OTP and resend within quota",
-    "layout": "Auth shell with address and expiry explanation",
-    "components": "Single labelled6digit input, paste support, resend countdown",
+    "purpose": "Verify email",
     "ops": [
       "verifyEmail",
       "resendOtp"
     ],
-    "interaction": "Submit OTP; resend invalidates old; no auto-submit at sixth digit",
-    "empty": "No address context: link registration/login",
-    "error": "Invalid/expired code; limit countdown; no token in logs",
-    "success": "Verified -> login, no fake token",
-    "responsive": "Numeric keyboard; one accessible input"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/VerifyEmailPage.tsx"
   },
   {
     "key": "forgot-password",
     "route": "/forgot-password",
     "role": "Public",
-    "purpose": "Request secure recovery link",
-    "layout": "Auth shell",
-    "components": "Email form and generic acknowledgement",
+    "purpose": "Request password recovery",
     "ops": [
       "forgotPassword"
     ],
-    "interaction": "Submit generic202",
-    "empty": "No remembered email required",
-    "error": "422/429 explicit; network retry",
-    "success": "Same ack for existing/unknown address",
-    "responsive": "One column; status live region"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/ForgotPasswordPage.tsx"
   },
   {
     "key": "reset-password",
     "route": "/reset-password",
     "role": "Public",
-    "purpose": "Set new password using single-use link",
-    "layout": "Auth shell",
-    "components": "New/confirm password fields, expiry feedback",
+    "purpose": "Reset password",
     "ops": [
       "resetPassword"
     ],
-    "interaction": "Read token fragment, scrub URL; submit token only to API",
-    "empty": "Missing token: request new link",
-    "error": "Expired/reused code -> recovery; preserve no password after failure navigation",
-    "success": "All sessions revoked, go to login",
-    "responsive": "Keyboard and manager new-password autocomplete"
-  },
-  {
-    "key": "passenger-overview",
-    "route": "/app/passenger",
-    "role": "PASSENGER",
-    "purpose": "See next booking, seat requests and actionable status",
-    "layout": "Task-first dashboard with next departure as focal row",
-    "components": "Upcoming booking, accepted/pending seats, unread link, service shortcuts",
-    "ops": [
-      "listBookings",
-      "listMySeats",
-      "unreadCount"
-    ],
-    "interaction": "Open nearest trip; choose new service; no fabricated analytics",
-    "empty": "First use: choose hire or carpool",
-    "error": "Section retry independent; stale data timestamp",
-    "success": "Current server statuses shown",
-    "responsive": "Stack upcoming items mobile; compact two-column desktop"
-  },
-  {
-    "key": "passenger-search-vehicles",
-    "route": "/app/passenger/vehicles",
-    "role": "PASSENGER",
-    "purpose": "Search vehicles in authenticated context",
-    "layout": "Shared listing surface in app shell",
-    "components": "Vehicle filters, role eligibility guidance",
-    "ops": [
-      "listCities",
-      "searchVehicles",
-      "getMe"
-    ],
-    "interaction": "Search->detail->booking-create",
-    "empty": "No qualified self-drive profile prompts driver onboarding; combined remains available",
-    "error": "Filter/server error retained",
-    "success": "Resource chosen for authoritative quote",
-    "responsive": "Shared listing responsive rules"
-  },
-  {
-    "key": "passenger-search-drivers",
-    "route": "/app/passenger/drivers",
-    "role": "PASSENGER",
-    "purpose": "Search hired drivers",
-    "layout": "Shared listing app shell",
-    "components": "Driver filter form, own verified vehicle selector",
-    "ops": [
-      "searchDrivers",
-      "listMyVehicles"
-    ],
-    "interaction": "Choose own vehicle for driver-only or external vehicle for combined",
-    "empty": "No own vehicle offers owner onboarding or combined mode",
-    "error": "Eligibility422 explained at field",
-    "success": "Driver selected into quote form",
-    "responsive": "Shared responsive listing layout"
-  },
-  {
-    "key": "booking-create",
-    "route": "/app/passenger/bookings/new",
-    "role": "Verified PASSENGER",
-    "purpose": "Create one service booking using server quote",
-    "layout": "Two-step resource/time form then review and request",
-    "components": "Service radios, chosen driver/vehicle, origin/destination, passengers, dates, line items,10min quote timer, no-payment label",
-    "ops": [
-      "getMe",
-      "listMyVehicles",
-      "searchVehicles",
-      "searchDrivers",
-      "quoteBooking",
-      "createBooking"
-    ],
-    "interaction": "Get quote->review->request with stable idempotency key; back edit invalidates quote",
-    "empty": "No resource selected: search CTA; unmet self-drive/own-vehicle eligibility explicit",
-    "error": "409 quote/resource stale requires refresh; timeout reconcile same key",
-    "success": "201 -> persisted PENDING detail; never CONFIRMED before consent",
-    "responsive": "Summary stacks after fields mobile; desktop side summary; focus first error"
-  },
-  {
-    "key": "passenger-bookings",
-    "route": "/app/passenger/bookings",
-    "role": "PASSENGER",
-    "purpose": "View own current/past bookings",
-    "layout": "Status filters and sortable-by-fixed-order history list",
-    "components": "Service badge, departure, consent status, estimate, cancellation action",
-    "ops": [
-      "listBookings",
-      "cancelBooking"
-    ],
-    "interaction": "Detail/cancel with version+reason; invalidate list and trip",
-    "empty": "No history: search CTA",
-    "error": "409 reload current state; cancellation values retained",
-    "success": "Cancelled row/timeline from server",
-    "responsive": "Table desktop; labelled cards mobile"
-  },
-  {
-    "key": "passenger-booking-detail",
-    "route": "/app/passenger/bookings/:id",
-    "role": "Participant",
-    "purpose": "Track provider approvals and trip",
-    "layout": "Booking summary plus consent timeline and next action",
-    "components": "Resources, server totals, pending expiry, owner/driver decision rows, cancellation/replacement dialog",
-    "ops": [
-      "getBooking",
-      "replaceDriver",
-      "cancelBooking",
-      "getTrip",
-      "tripHistory"
-    ],
-    "interaction": "Pending replace driver at same rate; cancel reason; active trip link",
-    "empty": "No consent yet says awaiting provider until expiry",
-    "error": "404 ownership; stale409 reload",
-    "success": "Confirmed only when all required decisions accepted",
-    "responsive": "Timeline stacked mobile; no horizontal status overflow"
-  },
-  {
-    "key": "passenger-rides",
-    "route": "/app/passenger/rides",
-    "role": "PASSENGER",
-    "purpose": "Review active and past trips",
-    "layout": "Upcoming/active/history sections",
-    "components": "Trip cards, current status, route labels, review actions",
-    "ops": [
-      "listTrips"
-    ],
-    "interaction": "Open detail; review only completed eligible target",
-    "empty": "No trips: book or join",
-    "error": "Retry own filtered query",
-    "success": "Real current trip states",
-    "responsive": "Cards mobile and rows desktop"
-  },
-  {
-    "key": "active-trip",
-    "route": "/app/trips/:id",
-    "role": "Participant/admin",
-    "purpose": "Inspect persisted manual route/status",
-    "layout": "Text route spine beside status history",
-    "components": "Simulated badge, timezone/date, waypoint list, current state, participant-safe resources, incident notice",
-    "ops": [
-      "getTrip",
-      "tripHistory"
-    ],
-    "interaction": "Participant reads; assigned driver actions via same domain controls; poll only visible active trip15s",
-    "empty": "No progress yet scheduled/assigned explanation",
-    "error": "Permission404; polling stops terminal/unmount; no fake movement",
-    "success": "Persisted status/history visible immediately",
-    "responsive": "Route text and timeline readable320px, no canvas-only information"
-  },
-  {
-    "key": "passenger-carpool-search",
-    "route": "/app/passenger/carpools/search",
-    "role": "PASSENGER",
-    "purpose": "Search and join from dashboard",
-    "layout": "Shared carpool search app shell",
-    "components": "City/date/seats filters",
-    "ops": [
-      "listCities",
-      "searchCarpools"
-    ],
-    "interaction": "Open ride/request seats",
-    "empty": "No matching rides explanatory state",
-    "error": "Shared search recovery",
-    "success": "Chosen real ride",
-    "responsive": "Shared search responsiveness"
-  },
-  {
-    "key": "passenger-carpool-history",
-    "route": "/app/passenger/carpools",
-    "role": "PASSENGER",
-    "purpose": "Track own pending/accepted/terminal seat requests",
-    "layout": "Status-filtered reservation history",
-    "components": "Seats,status,departure,reason,cancel,trip link",
-    "ops": [
-      "listMySeats",
-      "getCarpool",
-      "cancelSeat"
-    ],
-    "interaction": "Cancel with reason/version before cutoff; open trip",
-    "empty": "No requests: search CTA",
-    "error": "409 cutoff/current state reload",
-    "success": "Cancelled seats reflect refreshed availability",
-    "responsive": "Cards mobile; full labels"
-  },
-  {
-    "key": "notifications",
-    "route": "/app/notifications",
-    "role": "All active roles",
-    "purpose": "Read own durable notifications",
-    "layout": "Chronological list with unread filter",
-    "components": "Unread count, mark read, mark all, safe deep link",
-    "ops": [
-      "listNotifications",
-      "unreadCount",
-      "readNotification",
-      "readAllNotifications"
-    ],
-    "interaction": "Mark idempotently; mark-all cutoff does not consume later arrivals;30s visible polling",
-    "empty": "All caught up; no invented activity",
-    "error": "Independent retry; no losing unread state on optimistic failure",
-    "success": "Server readAt and count refreshed",
-    "responsive": "Compact wrapping rows; touch targets44px"
-  },
-  {
-    "key": "reviews",
-    "route": "/app/reviews",
-    "role": "Eligible participants",
-    "purpose": "Write permitted reviews and inspect own history",
-    "layout": "Eligible completed trip selector plus review list",
-    "components": "Target selector constrained to trip,1..5 radio rating,plain-text review",
-    "ops": [
-      "listTrips",
-      "createReview",
-      "myReviews"
-    ],
-    "interaction": "Submit one target; disable duplicates from server; no editing policy in v1",
-    "empty": "No completed eligible rides: explain eligibility",
-    "error": "409 duplicate reload; invalid/self target denied",
-    "success": "201 review appears in history and public count",
-    "responsive": "Stars are labelled radio controls; no hover-only input"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/ResetPasswordPage.tsx"
   },
   {
     "key": "profile",
     "route": "/app/profile",
-    "role": "All active roles",
-    "purpose": "Manage personal details, roles and sessions",
-    "layout": "Account sections with independent forms",
-    "components": "Name/phone, email read-only, role enabling, active-role navigation, session list/revoke/logout-all",
+    "role": "Authenticated",
+    "purpose": "Own profile and sessions",
     "ops": [
       "getMe",
       "updateMe",
       "addRole",
       "listSessions",
       "revokeSession",
-      "logoutAll"
+      "logout",
+      "logoutAll",
+      "refresh"
     ],
-    "interaction": "Save valid section; add role then onboarding; revoke own session",
-    "empty": "No other sessions normal state",
-    "error": "422 field feedback;401 clears user query cache",
-    "success": "Saved values from server; current revocation signs out",
-    "responsive": "One-column mobile, section nav desktop"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/profile/ProfilePage.tsx"
   },
   {
-    "key": "complaints",
-    "route": "/app/complaints",
+    "key": "personal-vehicles",
+    "route": "/app/vehicles",
+    "role": "Verified user",
+    "purpose": "Own vehicle registration and private evidence",
+    "ops": [
+      "listMyVehicles",
+      "createVehicle",
+      "updateVehicle",
+      "archiveVehicle",
+      "uploadVehicleDoc",
+      "listVehicleDocs",
+      "submitVehicle",
+      "getDocument",
+      "deleteDocument"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/providers/PersonalVehiclesPage.tsx"
+  },
+  {
+    "key": "booking-create",
+    "route": "/app/bookings/new",
+    "role": "PASSENGER",
+    "purpose": "Quote and request external driver with own vehicle",
+    "ops": [
+      "listMyVehicles",
+      "searchDrivers",
+      "quoteBooking",
+      "createBooking"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/bookings/BookingCreatePage.tsx"
+  },
+  {
+    "key": "passenger-bookings",
+    "route": "/app/bookings",
+    "role": "PASSENGER",
+    "purpose": "Bookings and history",
+    "ops": [
+      "listBookings",
+      "cancelBooking"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/bookings/PassengerBookingsPage.tsx"
+  },
+  {
+    "key": "passenger-booking-detail",
+    "route": "/app/bookings/:id",
     "role": "Participant",
-    "purpose": "File and track own trip complaints",
-    "layout": "Trip-linked form and complaint history",
-    "components": "Subject/description, case status,resolution",
+    "purpose": "Booking status and cancellation",
+    "ops": [
+      "getBooking",
+      "cancelBooking",
+      "getTrip",
+      "tripHistory"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/bookings/PassengerBookingDetailPage.tsx"
+  },
+  {
+    "key": "active-trip",
+    "route": "/app/trips/:id",
+    "role": "Participant",
+    "purpose": "Manual trip status and history",
     "ops": [
       "listTrips",
-      "createComplaint",
-      "myComplaints"
+      "getTrip",
+      "tripHistory",
+      "transitionTrip"
     ],
-    "interaction": "Submit against visible trip; view own case",
-    "empty": "No complaints normal; no trip means disabled create with explanation",
-    "error": "Open-limit409; unknown trip404",
-    "success": "Case number and saved OPEN state",
-    "responsive": "Long descriptions wrap; no sensitive content in toast"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/trips/ActiveTripPage.tsx"
   },
   {
-    "key": "driver-overview",
-    "route": "/app/driver",
-    "role": "DRIVER",
-    "purpose": "See qualification, next assignment and pending requests",
-    "layout": "Operational dashboard with eligibility banner",
-    "components": "Verification expiry, next ride, request counts, availability link",
+    "key": "passenger-carpool-history",
+    "route": "/app/seats",
+    "role": "PASSENGER",
+    "purpose": "Own carpool participation",
     "ops": [
-      "getMyDriver",
-      "listDriverBookings",
-      "listTrips"
+      "listMySeats",
+      "getCarpool",
+      "cancelSeat"
     ],
-    "interaction": "Open actionable onboarding/request/ride",
-    "empty": "Draft driver sees qualification tasks",
-    "error": "Queries recover independently",
-    "success": "Approved driver sees real workload",
-    "responsive": "Stack summary; no vanity chart"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/seats/PassengerCarpoolHistoryPage.tsx"
   },
   {
     "key": "driver-verification",
-    "route": "/app/driver/verification",
+    "route": "/app/driver/profile",
     "role": "DRIVER",
-    "purpose": "Upload license and submit current revision",
-    "layout": "Stepwise document workflow with explicit states",
-    "components": "License form,expiry,upload/scanning status,submit,reason/history",
+    "purpose": "Driver profile and private qualification",
     "ops": [
       "getMyDriver",
       "updateDriver",
+      "listCities",
       "uploadDriverDoc",
       "listDriverDocs",
       "submitDriver"
     ],
-    "interaction": "Upload->scan->submit; rejected correction; approved material edits warn commitments",
-    "empty": "No document: supported types/size",
-    "error": "Scanner unavailable stays pending;422 missing fields;409 revision stale",
-    "success": "PENDING then admin decision notification; never auto-approved",
-    "responsive": "Single-column controls; document details accessible text"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/providers/DriverVerificationPage.tsx"
   },
   {
     "key": "driver-availability",
     "route": "/app/driver/availability",
     "role": "DRIVER",
-    "purpose": "Maintain hire windows and unavailable blocks",
-    "layout": "Accessible interval list and add form",
-    "components": "Date/time/timezone controls,kind, accepting toggle, delete dialog",
+    "purpose": "Availability and accepting-bookings setting",
     "ops": [
       "listDriverAvailability",
       "createDriverAvailability",
       "deleteDriverAvailability",
       "setDriverListing"
     ],
-    "interaction": "Add/remove explicit intervals; block conflicts shown; no drag-only calendar",
-    "empty": "No windows means unavailable for hire",
-    "error": "409 conflict shows safe conflicting interval guidance",
-    "success": "Persisted interval reflected in list",
-    "responsive": "List usable keyboard/mobile; optional calendar supplementary"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/providers/DriverAvailabilityPage.tsx"
   },
   {
     "key": "driver-requests",
-    "route": "/app/driver/requests",
+    "route": "/app/driver/bookings",
     "role": "DRIVER",
-    "purpose": "Accept/reject required hire consent",
-    "layout": "Pending request queue with expiry",
-    "components": "Booking interval,service,vehicle,estimate,accept/reject reason",
+    "purpose": "Decide requests and inspect history",
     "ops": [
       "listDriverBookings",
       "getBooking",
       "decideBooking"
     ],
-    "interaction": "Provider chooses accept/reject; versioned single submit",
-    "empty": "No requests: availability CTA",
-    "error": "Expired409 reload; nonprovider403",
-    "success": "Accepted may remain waiting for owner; accurate status",
-    "responsive": "Queue cards mobile, rows desktop"
-  },
-  {
-    "key": "driver-active-rides",
-    "route": "/app/driver/active-rides",
-    "role": "DRIVER",
-    "purpose": "Operate assigned trip lifecycle",
-    "layout": "Next-action trip workspace",
-    "components": "Start/in-transit/complete controls, simulation progress, incident action",
-    "ops": [
-      "listTrips",
-      "getTrip",
-      "transitionTrip",
-      "advanceWaypoint",
-      "tripHistory"
-    ],
-    "interaction": "One valid next action; failure needs reason; overrun alert",
-    "empty": "No assigned trip: upcoming schedule",
-    "error": "409 active resource/eligibility/state with reload; no local advancement",
-    "success": "History appears only after server commit",
-    "responsive": "Large action targets; confirmation for completion/failure"
-  },
-  {
-    "key": "driver-history",
-    "route": "/app/driver/history",
-    "role": "DRIVER",
-    "purpose": "Review completed/cancelled assignments",
-    "layout": "Chronological booking/trip list",
-    "components": "State/service/date,amount estimate,trip detail",
-    "ops": [
-      "listDriverBookings",
-      "listTrips"
-    ],
-    "interaction": "Filter history; open detail",
-    "empty": "No history explanatory",
-    "error": "Retry query",
-    "success": "Actual terminal outcomes",
-    "responsive": "Semantic table/cards switch"
-  },
-  {
-    "key": "driver-profile",
-    "route": "/app/driver/profile",
-    "role": "DRIVER",
-    "purpose": "Maintain driver service information",
-    "layout": "Profile form plus identity verification warning",
-    "components": "Bio,city,rate,license fields via verification flow",
-    "ops": [
-      "getMyDriver",
-      "updateDriver",
-      "listCities"
-    ],
-    "interaction": "Nonmaterial save; material fields route through guarded re-verification",
-    "empty": "Draft fields incomplete guidance",
-    "error": "422 field errors;409 active commitment blocks identity edit",
-    "success": "Server version and status updated",
-    "responsive": "Form sections mobile; numeric rate with currency label"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/bookings/DriverRequestsPage.tsx"
   },
   {
     "key": "carpool-create",
-    "route": "/app/driver/carpools/new",
-    "role": "DRIVER+OWNER",
-    "purpose": "Create qualified hosted ride",
-    "layout": "Draft form then publication review",
-    "components": "Owned vehicle selector,city pair,pickup/dropoff,time,seats,price,join mode,manual waypoints",
+    "route": "/app/carpools/new",
+    "role": "DRIVER",
+    "purpose": "Draft and publish owned-vehicle ride",
     "ops": [
       "listMyVehicles",
       "getMyDriver",
@@ -634,361 +393,117 @@
       "updateCarpool",
       "publishCarpool"
     ],
-    "interaction": "Save draft no holds; publish atomic reservations; explain immutable publication",
-    "empty": "Missing approval/owned vehicle shows qualification path",
-    "error": "409 overlap;422 capacity; stale revision reload",
-    "success": "Published persisted route with correct remaining seats",
-    "responsive": "Review readable mobile; no map placeholder"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/carpools/CarpoolCreatePage.tsx"
   },
   {
     "key": "hosted-carpools",
-    "route": "/app/driver/carpools",
-    "role": "Host",
-    "purpose": "Manage own drafts/published/history",
-    "layout": "Hosted departure list and detail actions",
-    "components": "Draft edit,publish,cancel,requests,trip link",
+    "route": "/app/carpools",
+    "role": "DRIVER",
+    "purpose": "Own rides and participants",
     "ops": [
       "listMyCarpools",
       "getCarpool",
       "updateCarpool",
       "publishCarpool",
-      "cancelCarpool"
+      "cancelCarpool",
+      "listSeatRequests"
     ],
-    "interaction": "Edit draft only; cancel published with reason; open seat queue",
-    "empty": "No hosted rides: create if qualified",
-    "error": "409 transition/overlap reload",
-    "success": "Server publication/cancellation outcomes",
-    "responsive": "Cards mobile; route/date emphasized"
-  },
-  {
-    "key": "host-seat-requests",
-    "route": "/app/driver/carpools/:id/requests",
-    "role": "Host",
-    "purpose": "Approve pending seats and inspect accepted roster",
-    "layout": "Capacity header and two scoped request lists",
-    "components": "Remaining seats,pending seats,accept/reject,private passenger name",
-    "ops": [
-      "getCarpool",
-      "listSeatRequests",
-      "decideSeat"
-    ],
-    "interaction": "Accept only within capacity/cutoff; reject with reason",
-    "empty": "No requests or instant mode accepted roster",
-    "error": "409 final seat/state refreshes queue and capacity",
-    "success": "Persisted decision and current seat total",
-    "responsive": "No wide roster; accessible action labels with name"
-  },
-  {
-    "key": "owner-overview",
-    "route": "/app/owner",
-    "role": "OWNER",
-    "purpose": "See vehicle readiness and booking requests",
-    "layout": "Operational fleet dashboard",
-    "components": "Verification tasks,next booking,pending request list",
-    "ops": [
-      "getOwner",
-      "listMyVehicles",
-      "listOwnerBookings"
-    ],
-    "interaction": "Complete owner profile,add vehicle,open request",
-    "empty": "No vehicles: onboarding action",
-    "error": "Section retries",
-    "success": "Real fleet eligibility",
-    "responsive": "One-column mobile; summary+fleet desktop"
-  },
-  {
-    "key": "owner-add-vehicle",
-    "route": "/app/owner/vehicles/new",
-    "role": "OWNER",
-    "purpose": "Register own vehicle draft",
-    "layout": "Structured form with subsequent document step",
-    "components": "Identity,specs,city,rate,capacity fields",
-    "ops": [
-      "getOwner",
-      "createVehicle",
-      "listCities"
-    ],
-    "interaction": "Submit->owned vehicle document workflow",
-    "empty": "Incomplete owner profile links profile",
-    "error": "Duplicate409,field422",
-    "success": "Created DRAFT ID, no public listing claim",
-    "responsive": "Grouped fields; no forced multi-column narrow layout"
-  },
-  {
-    "key": "owner-vehicles",
-    "route": "/app/owner/vehicles",
-    "role": "OWNER",
-    "purpose": "Manage owned vehicles and safe archival",
-    "layout": "Fleet list and owned detail editor",
-    "components": "Status,expiry,list toggle,edit,archive,history links",
-    "ops": [
-      "listMyVehicles",
-      "updateVehicle",
-      "setVehicleListing",
-      "archiveVehicle"
-    ],
-    "interaction": "Material edit warns reapproval; archive confirm; listing requires qualification",
-    "empty": "No fleet CTA add",
-    "error": "409 commitments prevent archive/edit; preserve form",
-    "success": "Updated/archive state from API",
-    "responsive": "Fleet rows/cards; no icon-only destructive action"
-  },
-  {
-    "key": "owner-documents",
-    "route": "/app/owner/vehicles/:id/documents",
-    "role": "OWNER",
-    "purpose": "Submit registration/insurance/images",
-    "layout": "Document checklist and revision timeline",
-    "components": "Upload kind/expiry,scan state,preview authorized file,submit verification",
-    "ops": [
-      "listVehicleDocs",
-      "uploadVehicleDoc",
-      "submitVehicle",
-      "getDocument",
-      "deleteDocument"
-    ],
-    "interaction": "Quarantine->CLEAN->submit; no browser-declared clean state",
-    "empty": "Missing required docs explicit checklist",
-    "error": "413/415/scan failure/revision409",
-    "success": "PENDING/APPROVED/REJECTED visible with reason",
-    "responsive": "Preview optional; metadata provides accessible equivalent"
-  },
-  {
-    "key": "owner-availability",
-    "route": "/app/owner/vehicles/:id/availability",
-    "role": "OWNER",
-    "purpose": "Set hire windows and maintenance blocks",
-    "layout": "Interval form/list scoped to vehicle",
-    "components": "Dates,kind,timezone,remove,conflict guidance",
-    "ops": [
-      "listVehicleAvailability",
-      "createVehicleAvailability",
-      "deleteVehicleAvailability"
-    ],
-    "interaction": "Block reserves vehicle shared with carpools; remove availability cannot uncover work",
-    "empty": "No windows unavailable for hire",
-    "error": "409 conflict no optimistic removal",
-    "success": "Persisted interval only after success",
-    "responsive": "Shared availability behavior"
-  },
-  {
-    "key": "owner-bookings",
-    "route": "/app/owner/bookings",
-    "role": "OWNER",
-    "purpose": "Handle vehicle-provider consent",
-    "layout": "Request queue and booking detail",
-    "components": "Vehicle,date,requester safe name,decision rows,accept/reject/cancel",
-    "ops": [
-      "listOwnerBookings",
-      "getBooking",
-      "decideBooking",
-      "cancelBooking"
-    ],
-    "interaction": "Own required owner consent only; accurate combined waiting state",
-    "empty": "No requests: listing guidance",
-    "error": "Expired/stale409 reload",
-    "success": "Owner decision persisted and other consent preserved",
-    "responsive": "Cards mobile; decision clearly scoped to vehicle"
-  },
-  {
-    "key": "owner-history",
-    "route": "/app/owner/history",
-    "role": "OWNER",
-    "purpose": "Inspect bookings for own fleet",
-    "layout": "Vehicle/date/status history filters",
-    "components": "Booked estimate,trip status,archived vehicle reference",
-    "ops": [
-      "listOwnerBookings",
-      "listTrips"
-    ],
-    "interaction": "Filter and inspect retained history",
-    "empty": "No history normal state",
-    "error": "Scoped retry",
-    "success": "Historical vehicle labels retained",
-    "responsive": "Responsive table with row detail"
-  },
-  {
-    "key": "owner-profile",
-    "route": "/app/owner/profile",
-    "role": "OWNER",
-    "purpose": "Complete owner service contact profile",
-    "layout": "Single owner form within shared account navigation",
-    "components": "Display name,contact phone,role switch links",
-    "ops": [
-      "getOwner",
-      "updateOwner"
-    ],
-    "interaction": "Save owner details separately from personal profile",
-    "empty": "Uncompleted profile blocks vehicle create with explanation",
-    "error": "422 field feedback",
-    "success": "Own persisted profile",
-    "responsive": "Mobile-friendly phone input"
-  },
-  {
-    "key": "admin-overview",
-    "route": "/admin",
-    "role": "ADMIN",
-    "purpose": "Prioritize pending verification, active incidents and complaints",
-    "layout": "Operational queue overview with bounded report",
-    "components": "Pending counts,overdue trips,open complaints,date range,estimated value label",
-    "ops": [
-      "adminReport",
-      "adminTrips",
-      "adminVerifications",
-      "adminComplaints"
-    ],
-    "interaction": "Click count->filtered queue; no decorative chart",
-    "empty": "Zero backlog is explicit",
-    "error": "Section retries; forbidden redirects without leaking data",
-    "success": "Counts correspond same report boundaries",
-    "responsive": "Compact summaries mobile; task queue first"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/carpools/HostedCarpoolsPage.tsx"
   },
   {
     "key": "admin-users",
     "route": "/admin/users",
     "role": "ADMIN",
-    "purpose": "Inspect and suspend/reactivate accounts",
-    "layout": "Search/filter table and detail drawer",
-    "components": "Role/status filters,profile,suspend reason dialog,reactivate",
+    "purpose": "Inspect, suspend and reactivate accounts",
     "ops": [
       "adminUsers",
       "adminUser",
       "suspendUser",
       "reactivateUser"
     ],
-    "interaction": "Require reason; show future cancellation and active incident consequences; protect last admin",
-    "empty": "No matching accounts: clear filters",
-    "error": "409 protected admin/current changes;403 role removal clears cache",
-    "success": "Persisted status and audit outcome",
-    "responsive": "Drawer full-screen mobile; focus restored on close"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/admin/users/AdminUsersPage.tsx"
   },
   {
-    "key": "admin-driver-verification",
-    "route": "/admin/verifications/drivers",
+    "key": "admin-verification",
+    "route": "/admin/verifications",
     "role": "ADMIN",
-    "purpose": "Review driver document revisions",
-    "layout": "Queue plus side-by-side current revision detail",
-    "components": "Private license viewer,expiry,submitted revision,reason,approve/reject",
+    "purpose": "Review driver and personal-vehicle evidence",
     "ops": [
       "adminVerifications",
       "adminVerification",
       "getDocument",
       "decideVerification"
     ],
-    "interaction": "Review CLEAN doc; cannot approve self; CAS decision",
-    "empty": "No pending revisions all clear",
-    "error": "409 stale revision reload; file failure never approve blind",
-    "success": "Decision reason and next queue item",
-    "responsive": "Stack preview/detail mobile; downloadable PDF accessible"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/admin/verification/AdminVerificationPage.tsx"
   },
   {
-    "key": "admin-vehicle-verification",
-    "route": "/admin/verifications/vehicles",
+    "key": "admin-operations",
+    "route": "/admin/operations",
     "role": "ADMIN",
-    "purpose": "Review vehicle ownership/insurance evidence",
-    "layout": "Queue/detail with required document checklist",
-    "components": "Registration,insurance,images,expiry,current revision,decision",
-    "ops": [
-      "adminVerifications",
-      "adminVerification",
-      "getDocument",
-      "decideVerification"
-    ],
-    "interaction": "Approve only complete clean current revision; reason required",
-    "empty": "No pending vehicle revisions",
-    "error": "Expired422/stale409 clearly explain",
-    "success": "Persisted decision and audit",
-    "responsive": "Same responsive review pattern"
-  },
-  {
-    "key": "admin-bookings",
-    "route": "/admin/bookings",
-    "role": "ADMIN",
-    "purpose": "Resolve booking operations safely",
-    "layout": "Date/status queue and detail",
-    "components": "Provider decisions,resource holds summary,cancel pending/confirmed,reassign pending driver",
+    "purpose": "Inspect and resolve booking/ride incidents",
     "ops": [
       "adminBookings",
-      "getBooking",
-      "cancelBooking",
-      "replaceDriver",
-      "getTrip",
-      "transitionTrip"
-    ],
-    "interaction": "Use guarded domain actions; started failure incident reason; no arbitrary status dropdown",
-    "empty": "No matching bookings",
-    "error": "409 state/conflict; no bypass control",
-    "success": "Terminal status and audit timeline",
-    "responsive": "Table row details mobile full-screen"
-  },
-  {
-    "key": "admin-carpools",
-    "route": "/admin/carpools",
-    "role": "ADMIN",
-    "purpose": "Resolve published ride issues and overruns",
-    "layout": "Carpool/trip queue with incident filter",
-    "components": "Seat counters,state,host,trip,unstarted cancel,active fail",
-    "ops": [
       "adminCarpools",
       "adminTrips",
+      "getBooking",
       "getCarpool",
+      "getTrip",
+      "cancelBooking",
       "cancelCarpool",
       "transitionTrip"
     ],
-    "interaction": "Cancel unstarted; fail active through trip API; no capacity override",
-    "empty": "No rides/incidents",
-    "error": "409 current state reload",
-    "success": "Participants notified and holds updated atomically",
-    "responsive": "Route rows wrap; no map dependency"
-  },
-  {
-    "key": "admin-complaints",
-    "route": "/admin/complaints",
-    "role": "ADMIN",
-    "purpose": "Review and resolve participant cases",
-    "layout": "Queue plus case narrative/history",
-    "components": "Status filters,trip link,reporter,description,resolution reason",
-    "ops": [
-      "adminComplaints",
-      "decideComplaint",
-      "getTrip"
-    ],
-    "interaction": "OPEN->IN_REVIEW->RESOLVED/DISMISSED; no silent deletion",
-    "empty": "No cases in filter",
-    "error": "422 reason;409 stale/terminal",
-    "success": "Resolution visible reporter and audit",
-    "responsive": "Long plain text readable; preserve dialog draft"
-  },
-  {
-    "key": "admin-reports",
-    "route": "/admin/reports",
-    "role": "ADMIN",
-    "purpose": "Inspect bounded operational performance",
-    "layout": "Date controls and compact tables/trend-ready counts",
-    "components": "Booking/completion/seat/verification counts,estimated value,not revenue label",
-    "ops": [
-      "adminReport"
-    ],
-    "interaction": "Query from/to<=90days; share URL range",
-    "empty": "No activity returns zero actual counts",
-    "error": "422 range on fields; unavailable report retry",
-    "success": "Totals match server response; date boundaries explicit",
-    "responsive": "Tables scroll within labelled region only if necessary"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/admin/operations/AdminOperationsPage.tsx"
   },
   {
     "key": "admin-audit",
-    "route": "/admin/audit-logs",
+    "route": "/admin/audit",
     "role": "ADMIN",
-    "purpose": "Inspect who changed sensitive state",
-    "layout": "Read-only searchable audit table and detail",
-    "components": "Actor/action/date filters,reason,requestId,safe before/after",
+    "purpose": "Read immutable administrative actions",
     "ops": [
       "adminAudit"
     ],
-    "interaction": "Inspect,filter,paginate; no edit/delete/export secrets",
-    "empty": "No records for filter",
-    "error": "Retry with filters;403 clears admin caches",
-    "success": "Immutable entries shown with UTC/local labelled times",
-    "responsive": "Expandable mobile row; JSON safe formatted text"
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/admin/AdminAuditPage.tsx"
   }
 ]

@@ -1,6 +1,6 @@
 # DriveHire lean first release
 
-Status: scope proposal accepted in conversation; written design awaiting owner review.
+Status: written design approved by the owner on2026-10-17 (“Yes continue”); detailed implementation plan awaiting review.
 
 ## Intent and existing work
 
@@ -69,3 +69,7 @@ UI foundations are introduced when the first real screens need them; milestone7 
 Acceptance requires real persisted end-to-end driver hiring and carpool journeys, tested account boundaries, database-proven conflict/capacity protection, private evidence handling and usable responsive screens. No Critical/High correctness or security defects may remain unmitigated. Deployment readiness requires actual available-environment evidence; production launch remains a separate decision.
 
 After written-design approval, replace the active roadmap and phase prompts with the reduced sequence, update the overview, functional requirements, role/vehicle rules, lifecycle documents, schema design, OpenAPI, screen inventory, planning model and traceability together. Explicitly mark superseded requirements and operations as deferred so documentation checks do not demand removed modules. Preserve the Phase01 handoff and historical implementation record. Then prepare the detailed implementation plan against that coherent reduced baseline using the Superpowers writing-plans workflow.
+
+## Reconciliation details
+
+Current active documents resolve ownership through vehicles.owner_id without an OWNER role/profile, embed a safe public vehicle summary in carpool detail, and use one DRIVER consent. Driver replacement and simulated waypoint tracking are deferred; cancel/new quote and manual trip states cover the retained flows. Authentication-only outbox remains, with no product notification producer or delivery-channel subsystem. The active contract/inventory has70 operations and26 screens; no product feature implementation is claimed.
