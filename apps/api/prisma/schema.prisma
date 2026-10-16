@@ -156,3 +156,122 @@ model JobLease {
   @@map("job_leases")
   @@index([leaseUntil])
 }
+
+model DriverProfile {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId               String              @unique @map("user_id") @db.Uuid
+  licenseCiphertext    String?             @map("license_number_ciphertext")
+  licenseDigest        String?             @map("license_number_digest") @db.Char(64)
+  licenseCountry       String?             @map("license_country") @db.Char(2)
+  licenseExpiresOn     DateTime?           @map("license_expires_on") @db.Date
+  cityId               String?             @map("city_id") @db.Uuid
+  hourlyRateMinor      Int?                @map("hourly_rate_minor")
+  verificationStatus   String              @default("DRAFT") @map("verification_status") @db.VarChar(16)
+  currentVerificationId String?            @map("current_verification_id") @db.Uuid
+  acceptingBookings    Boolean             @default(false) @map("accepting_bookings")
+  version              Int                 @default(1)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  currentVerification  VerificationRequest? @relation("DriverCurrentVerification", fields: [currentVerificationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requests             VerificationRequest[] @relation("DriverSubject")
+  documents            Document[]
+
+  @@map("driver_profiles")
+  @@unique([licenseCountry, licenseDigest])
+  @@index([cityId, verificationStatus, acceptingBookings])
+  @@index([licenseExpiresOn])
+}
+
+model Vehicle {
+  id                   String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId              String              @map("owner_id") @db.Uuid
+  registrationCiphertext String            @map("registration_number_ciphertext")
+  registrationDigest   String              @unique @map("registration_number_digest") @db.Char(64)
+  make                 String              @db.VarChar(60)
+  model                String              @db.VarChar(60)
+  year                 Int                 @db.SmallInt
+  category             String              @db.VarChar(20)
+  seats                Int                 @db.SmallInt
+  transmission         String              @db.VarChar(16)
+  fuelType             String              @map("fuel_type") @db.VarChar(16)
+  cityId               String              @map("city_id") @db.Uuid
+  description          String?
+  verificationStatus   String              @default("DRAFT") @map("verification_status") @db.VarChar(16)
+  currentVerificationId String?            @map("current_verification_id") @db.Uuid
+  archivedAt           DateTime?           @map("archived_at") @db.Timestamptz(6)
+  version              Int                 @default(1)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  currentVerification  VerificationRequest? @relation("VehicleCurrentVerification", fields: [currentVerificationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  requests             VerificationRequest[] @relation("VehicleSubject")
+  documents            Document[]
+
+  @@map("vehicles")
+  @@index([ownerId, archivedAt])
+  @@index([ownerId, verificationStatus])
+  @@index([currentVerificationId])
+}
+
+model Document {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploaderId         String         @map("uploader_id") @db.Uuid
+  driverId           String?        @map("driver_id") @db.Uuid
+  vehicleId          String?        @map("vehicle_id") @db.Uuid
+  kind               String         @db.VarChar(20)
+  objectKey          String         @unique @map("object_key")
+  contentType        String         @map("content_type") @db.VarChar(80)
+  byteSize           Int            @map("byte_size")
+  sha256             String         @db.Char(64)
+  scanStatus         String         @default("PENDING") @map("scan_status") @db.VarChar(16)
+  expiresOn          DateTime?      @map("expires_on") @db.Date
+  retiredAt          DateTime?      @map("retired_at") @db.Timestamptz(6)
+  encryptionKeyVersion String?      @map("encryption_key_version") @db.VarChar(40)
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  driver             DriverProfile? @relation(fields: [driverId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  vehicle            Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  links              VerificationDocument[]
+
+  @@map("documents")
+  @@index([driverId, kind])
+  @@index([vehicleId, kind])
+  @@index([scanStatus, createdAt])
+}
+
+model VerificationRequest {
+  id               String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driverId         String?               @map("driver_id") @db.Uuid
+  vehicleId        String?               @map("vehicle_id") @db.Uuid
+  revision         Int
+  subjectVersion   Int                   @map("subject_version")
+  status           String                @default("PENDING") @db.VarChar(16)
+  submittedBy      String                @map("submitted_by") @db.Uuid
+  decidedBy        String?               @map("decided_by") @db.Uuid
+  submittedAt      DateTime              @map("submitted_at") @db.Timestamptz(6)
+  decidedAt        DateTime?             @map("decided_at") @db.Timestamptz(6)
+  reason           String?
+  version          Int                   @default(1)
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  driver           DriverProfile?        @relation("DriverSubject", fields: [driverId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  vehicle          Vehicle?              @relation("VehicleSubject", fields: [vehicleId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  driverCurrent    DriverProfile[]       @relation("DriverCurrentVerification")
+  vehicleCurrent   Vehicle[]             @relation("VehicleCurrentVerification")
+  links            VerificationDocument[]
+
+  @@map("verification_requests")
+  @@unique([driverId, revision])
+  @@unique([vehicleId, revision])
+  @@index([status, submittedAt])
+  @@index([driverId, revision])
+  @@index([vehicleId, revision])
+}
+
+model VerificationDocument {
+  verificationId String              @map("verification_id") @db.Uuid
+  documentId     String              @map("document_id") @db.Uuid
+  verification   VerificationRequest @relation(fields: [verificationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  document       Document            @relation(fields: [documentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([verificationId, documentId])
+  @@map("verification_documents")
+  @@index([documentId])
+}

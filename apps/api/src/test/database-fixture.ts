@@ -45,10 +45,20 @@ async function applyRuntimeGrants(migrationPool: Pool, runtimeRole: string): Pro
     GRANT SELECT, INSERT, UPDATE, DELETE ON rate_limit_buckets TO ${quoted};
     GRANT SELECT ON admin_policy TO ${quoted};
     GRANT SELECT, INSERT, UPDATE ON job_leases TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON driver_profiles TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON vehicles TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON documents TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON verification_requests TO ${quoted};
+    GRANT SELECT, INSERT ON verification_documents TO ${quoted};
   `);
 }
 
 const TRUNCATE_TABLES = [
+  'verification_documents',
+  'verification_requests',
+  'documents',
+  'driver_profiles',
+  'vehicles',
   'auth_challenges',
   'refresh_tokens',
   'refresh_sessions',
@@ -56,9 +66,39 @@ const TRUNCATE_TABLES = [
   'users',
   'outbox_events',
   'rate_limit_buckets',
+  'admin_policy',
   'job_leases',
   'cities',
 ].join(', ');
+
+/**
+ * Deploy reviewed migrations with the migration identity (used by the
+ * fixture and by tests that need to rebuild schema state explicitly).
+ */
+export async function deployTestMigrations(migrationUrl: string): Promise<void> {
+  await execFileAsync(
+    process.execPath,
+    [resolve(process.cwd(), 'node_modules/prisma/build/index.js'), 'migrate', 'deploy'],
+    {
+      cwd: 'apps/api',
+      env: { ...process.env, MIGRATION_DATABASE_URL: migrationUrl },
+      timeout: 120000,
+    },
+  );
+}
+
+/** Drop all Milestone02 tables (extensions kept) to reproduce pre-migration state. */
+export async function dropTestSchema(migrationPool: Pool): Promise<void> {
+  await migrationPool.query(`DROP TABLE IF EXISTS ${TRUNCATE_TABLES} CASCADE`);
+  const history = await migrationPool.query<{ r: string | null }>(
+    "SELECT to_regclass('public._prisma_migrations') AS r",
+  );
+  if (history.rows[0]?.r) {
+    await migrationPool.query(
+      "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification')",
+    );
+  }
+}
 
 /**
  * Deploy reviewed migrations with the migration identity, verify the
@@ -75,15 +115,17 @@ export async function withTestDatabase<T>(
   const runtimePool = new Pool({ connectionString: runtimeUrl, max: 4 });
   runtimePool.on('error', () => {});
   try {
-    await execFileAsync(
-      process.execPath,
-      [resolve(process.cwd(), 'node_modules/prisma/build/index.js'), 'migrate', 'deploy'],
-      {
-        cwd: 'apps/api',
-        env: { ...process.env, MIGRATION_DATABASE_URL: migrationUrl },
-        timeout: 120000,
-      },
+    await deployTestMigrations(migrationUrl);
+    const sentinel = await migrationPool.query<{ cities: string | null; profiles: string | null }>(
+      "SELECT to_regclass('public.cities') AS cities, to_regclass('public.driver_profiles') AS profiles",
     );
+    if (!sentinel.rows[0]?.cities || !sentinel.rows[0]?.profiles) {
+      // History without tables (dropped without history reset): clear and redeploy.
+      await migrationPool.query(
+        "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification')",
+      );
+      await deployTestMigrations(migrationUrl);
+    }
     await assertDedicatedTarget(migrationPool, runtimePool);
     await applyRuntimeGrants(migrationPool, runtimeRoleOf(runtimeUrl));
     const reset = async (): Promise<void> => {
