@@ -1,0 +1,59 @@
+{
+  "name": "drivehire-carpooling-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.22.0 <25",
+    "npm": ">=11 <12"
+  },
+  "packageManager": "npm@11.19.1",
+  "workspaces": [
+    "packages/contracts",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run build -w @drivehire/contracts && concurrently -k -n contracts,api,worker,web \"npm run dev -w @drivehire/contracts\" \"npm run dev -w @drivehire/api\" \"npm run dev:worker -w @drivehire/api\" \"npm run dev -w @drivehire/web\"",
+    "build": "npm run build -w @drivehire/contracts && npm run build -w @drivehire/api && npm run build -w @drivehire/web",
+    "typecheck": "npm run build -w @drivehire/contracts && npm run typecheck --workspaces --if-present",
+    "lint": "eslint . && node scripts/check-boundaries.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test:unit && npm run test:contract",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:contract": "vitest run --config vitest.contract.config.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "node scripts/unavailable-suite.mjs e2e Phase14",
+    "docs:check": "python docs/check_plan.py && node scripts/validate-openapi.mjs",
+    "db:validate": "node scripts/unavailable-suite.mjs schema Phase02",
+    "db:migrate:deploy": "node scripts/unavailable-suite.mjs migrations Phase02",
+    "db:test:constraints": "node scripts/unavailable-suite.mjs constraints Phase02",
+    "infra:check": "node scripts/check-local-services.mjs"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "12.1.0",
+    "@eslint/js": "10.0.1",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.3",
+    "@types/cors": "2.8.19",
+    "@types/express": "5.0.6",
+    "@types/node": "24.19.2",
+    "@types/pg": "8.23.1",
+    "@types/supertest": "6.0.3",
+    "concurrently": "9.2.5",
+    "eslint": "10.13.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "16.5.0",
+    "jsdom": "27.4.0",
+    "prettier": "3.9.10",
+    "supertest": "7.3.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.5"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

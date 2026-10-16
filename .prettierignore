@@ -1,0 +1,15 @@
+node_modules/
+**/dist/
+package-lock.json
+.tools/
+.cache/
+.superpowers/
+artifacts/
+__pycache__/
+docs/planning-model.json
+docs/planning/screens.json
+docs/api/openapi.json
+docs/specification/
+docs/implementation-prompts/
+docs/planning/
+PRODUCT.md

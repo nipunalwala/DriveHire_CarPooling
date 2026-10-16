@@ -17123,7 +17123,7 @@
             "pattern": "^\\+[1-9][0-9]{7,14}$"
           }
         },
-        "required": []
+        "minProperties": 1
       },
       "RoleInput": {
         "type": "object",
