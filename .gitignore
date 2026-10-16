@@ -27,3 +27,7 @@ private-storage/
 .worktrees/
 __pycache__/
 *.pyc
+.tools/
+.cache/
+.superpowers/
+artifacts/

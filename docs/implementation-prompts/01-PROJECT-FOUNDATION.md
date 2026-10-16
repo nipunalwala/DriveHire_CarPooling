@@ -42,12 +42,24 @@ Blueprint approval; no application implementation has begun Before starting, ins
 
 ## D. Exact implementation scope and task sequence
 Each task is a small independently reviewable deliverable. For each: name the observed behavior, write its focused test, run to see the expected failure, implement the minimal working behavior, rerun focused then relevant suite, refactor while green, commit. Write an exact test signature/interface/file brief in the phase's temporary execution ledger when a task spans several files; do not invent hidden shared APIs.
-- [ ] **Task 1.** Verify current supported mutually compatible Node LTS, npm, React/Vite/Express/TypeScript/PostgreSQL and Prisma classic schema/Migrate line before installation; record exact version compatibility matrix and pin lockfile. Resolve any unsupported ORM baseline through ADR before choosing new interface. Deliver a passing focused test and commit for this task before beginning the next.
-- [ ] **Task 2.** Create npm workspace scripts matching guide; strict shared TypeScript config; ESLint/Prettier; deterministic npm ci; API app factory separate from listener, worker entry separate from business handlers. Deliver a passing focused test and commit for this task before beginning the next.
-- [ ] **Task 3.** Build validated environment module, redacting structured logger, requestId middleware, error envelope, JSON limit, allowlisted CORS/Helmet, graceful HTTP/worker shutdown and health/readiness probes. Deliver a passing focused test and commit for this task before beginning the next.
-- [ ] **Task 4.** Define contracts package for safe DTO/Zod boundary exports; web cannot import Prisma/database/env modules; add import-boundary check. Register typed domain event/adapter interfaces without fake business handlers. Deliver a passing focused test and commit for this task before beginning the next.
-- [ ] **Task 5.** Compose PostgreSQL/Mailpit/scanner dev/test services with persistent dev and disposable allowlisted test volumes; private disk mount outside static root; no credentials committed. Deliver a passing focused test and commit for this task before beginning the next.
-- [ ] **Task 6.** CI installs, typechecks, lints, unit tests, docs validation and builds; define integration/e2e scripts that fail clearly if invoked before suites exist, record unimplemented suite availability in handoff rather than silent success. Deliver a passing focused test and commit for this task before beginning the next.
+### Task 1: Foundation work packet
+
+- [ ] Verify current supported mutually compatible Node LTS, npm, React/Vite/Express/TypeScript/PostgreSQL and Prisma classic schema/Migrate line before installation; record exact version compatibility matrix and pin lockfile. Resolve any unsupported ORM baseline through ADR before choosing new interface. Deliver a passing focused test and commit for this task before beginning the next.
+### Task 2: Foundation work packet
+
+- [ ] Create npm workspace scripts matching guide; strict shared TypeScript config; ESLint/Prettier; deterministic npm ci; API app factory separate from listener, worker entry separate from business handlers. Deliver a passing focused test and commit for this task before beginning the next.
+### Task 3: Foundation work packet
+
+- [ ] Build validated environment module, redacting structured logger, requestId middleware, error envelope, JSON limit, allowlisted CORS/Helmet, graceful HTTP/worker shutdown and health/readiness probes. Deliver a passing focused test and commit for this task before beginning the next.
+### Task 4: Foundation work packet
+
+- [ ] Define contracts package for safe DTO/Zod boundary exports; web cannot import Prisma/database/env modules; add import-boundary check. Register typed domain event/adapter interfaces without fake business handlers. Deliver a passing focused test and commit for this task before beginning the next.
+### Task 5: Foundation work packet
+
+- [ ] Compose PostgreSQL/Mailpit/scanner dev/test services with persistent dev and disposable allowlisted test volumes; private disk mount outside static root; no credentials committed. Deliver a passing focused test and commit for this task before beginning the next.
+### Task 6: Foundation work packet
+
+- [ ] CI installs, typechecks, lints, unit tests, docs validation and builds; define integration/e2e scripts that fail clearly if invoked before suites exist, record unimplemented suite availability in handoff rather than silent success. Deliver a passing focused test and commit for this task before beginning the next.
 
 ## E. File and folder expectations
 Root package.json and lockfile; apps/web, apps/api, packages/contracts; configs; docker/; compose.yml and compose.test.yml; .github/workflows/ci.yml; .env.example; docs/operations/development.md. Keep per-domain routers/controllers/services/repositories/schemas/tests together. Add only files with one clear responsibility; exact additional names follow these module boundaries. Update safe shared contract types whenever API DTOs change. Do not import server/Prisma code into browser. Generated image assets, when this phase uses them, must be physically under `apps/web/public/images/generated/`, with `docs/design/image-assets.md` recording source prompt, selected filename, dimensions, license/usage provenance and alt/decorative decision.
