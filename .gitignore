@@ -23,6 +23,7 @@ test-results/
 # Local private data and generated previews (selected assets live under app public tree)
 uploads/
 private-storage/
+apps/api/src/generated/
 .impeccable/
 .worktrees/
 __pycache__/

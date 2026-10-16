@@ -1,0 +1,158 @@
+// Milestone02 Task1: identity/session/auth-email schema.
+// Maps exactly to docs/specification/07-database-design.md.
+// CHECK/exclusion/trigger invariants live in prisma/migrations SQL;
+// this file declares tables, columns, keys and indexes for the client.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model City {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(80)
+  region    String   @db.VarChar(80)
+  country   String   @db.Char(2)
+  timezone  String   @db.VarChar(60)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("cities")
+  @@unique([country, region, name])
+  @@index([active, name])
+}
+
+model User {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String    @unique @db.VarChar(254)
+  displayName      String    @map("display_name") @db.VarChar(80)
+  phone            String?   @unique @map("phone") @db.VarChar(16)
+  passwordHash     String    @map("password_hash")
+  emailVerifiedAt  DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  status           String    @default("ACTIVE") @db.VarChar(16)
+  tokenVersion     Int       @default(1) @map("token_version")
+  suspendedAt      DateTime? @map("suspended_at") @db.Timestamptz(6)
+  suspensionReason String?   @map("suspension_reason")
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  roles            UserRole[]
+
+  @@map("users")
+  @@index([status, createdAt])
+}
+
+model UserRole {
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @db.VarChar(16)
+  grantedBy String?  @map("granted_by") @db.Uuid
+  grantedAt DateTime @default(now()) @map("granted_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([userId, role])
+  @@map("user_roles")
+  @@index([role, userId])
+}
+
+model RefreshSession {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String         @map("user_id") @db.Uuid
+  absoluteExpiresAt DateTime       @map("absolute_expires_at") @db.Timestamptz(6)
+  revokedAt         DateTime?      @map("revoked_at") @db.Timestamptz(6)
+  revocationReason  String?        @map("revocation_reason") @db.VarChar(80)
+  userAgentDigest   String?        @map("user_agent_digest") @db.Char(64)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  tokens            RefreshToken[]
+
+  @@map("refresh_sessions")
+  @@index([userId, revokedAt])
+  @@index([absoluteExpiresAt])
+}
+
+model RefreshToken {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId     String         @map("session_id") @db.Uuid
+  tokenHash     String         @unique @map("token_hash") @db.Char(64)
+  parentTokenId String?        @unique @map("parent_token_id") @db.Uuid
+  expiresAt     DateTime       @map("expires_at") @db.Timestamptz(6)
+  consumedAt    DateTime?      @map("consumed_at") @db.Timestamptz(6)
+  revokedAt     DateTime?      @map("revoked_at") @db.Timestamptz(6)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  session       RefreshSession @relation(fields: [sessionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  parent        RefreshToken?  @relation("TokenRotation", fields: [parentTokenId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  children      RefreshToken[] @relation("TokenRotation")
+
+  @@map("refresh_tokens")
+  @@index([sessionId])
+  @@index([expiresAt])
+}
+
+model AuthChallenge {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  purpose       String    @db.VarChar(24)
+  secretHash    String    @map("secret_hash") @db.Char(64)
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  attempts      Int       @default(0) @db.SmallInt
+  consumedAt    DateTime? @map("consumed_at") @db.Timestamptz(6)
+  invalidatedAt DateTime? @map("invalidated_at") @db.Timestamptz(6)
+  resendAfter   DateTime  @map("resend_after") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("auth_challenges")
+  @@index([expiresAt])
+  @@index([userId, purpose, createdAt])
+}
+
+model OutboxEvent {
+  id                        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventType                 String    @map("event_type") @db.VarChar(80)
+  aggregateType             String    @map("aggregate_type") @db.VarChar(40)
+  aggregateId               String    @map("aggregate_id") @db.Uuid
+  aggregateVersion          Int       @map("aggregate_version")
+  payload                   Json      @map("payload")
+  sensitivePayloadCiphertext String?  @map("sensitive_payload_ciphertext")
+  occurredAt                DateTime  @map("occurred_at") @db.Timestamptz(6)
+  availableAt               DateTime  @map("available_at") @db.Timestamptz(6)
+  attempts                  Int       @default(0)
+  leaseUntil                DateTime? @map("lease_until") @db.Timestamptz(6)
+  processedAt               DateTime? @map("processed_at") @db.Timestamptz(6)
+  deadLetterAt              DateTime? @map("dead_letter_at") @db.Timestamptz(6)
+  lastErrorCode             String?   @map("last_error_code") @db.VarChar(80)
+  createdAt                 DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("outbox_events")
+  @@unique([aggregateType, aggregateId, eventType, aggregateVersion])
+  @@index([availableAt, occurredAt])
+}
+
+model RateLimitBucket {
+  keyHash     String   @map("key_hash") @db.Char(64)
+  windowStart DateTime @map("window_start") @db.Timestamptz(6)
+  count       Int      @default(0)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@id([keyHash, windowStart])
+  @@map("rate_limit_buckets")
+  @@index([expiresAt])
+}
+
+model AdminPolicy {
+  id      Int @id @default(1) @db.SmallInt
+  version Int @default(1)
+
+  @@map("admin_policy")
+}
+
+model JobLease {
+  name        String   @id @db.VarChar(100)
+  owner       String   @db.VarChar(100)
+  leaseUntil  DateTime @map("lease_until") @db.Timestamptz(6)
+  heartbeatAt DateTime @map("heartbeat_at") @db.Timestamptz(6)
+
+  @@map("job_leases")
+  @@index([leaseUntil])
+}
