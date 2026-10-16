@@ -124,5 +124,9 @@ ADRs001 and017 follow explicit user direction. Other decisions are recommended b
 
 **Alternatives considered:** Leaving this implicit forces fresh sessions to invent policy; the recorded choice gives an explicit transaction/security/UI contract.
 
+### ADR018 · Supported Phase01 runtime and reproducibility
+
+Phase01 uses Node24.22.0/npm11.19.1 and exact direct dependency pins plus lockfile. A checksum-verified portable Windows runtime avoids changing the installed system Node20. TypeScript5.9.3 satisfies the supported lint-tool peer range; the registry's TypeScript7 tag is not selected. Prisma7.10.1 is the stable schema/Migrate candidate for02 because the registry's latest8 tag is a release candidate; schema/ORM packages are intentionally not installed until02. Docker base/service image digests are pinned after successful pull/build. Startup does not create missing business schema: readiness503 and worker waiting are truthful until02. Root scripts include only implemented suites in current `npm test`; future schema/E2E commands exit2 explicitly. See [toolchain](../operations/toolchain.md) and [development](../operations/development.md).
+
 ## Change protocol
 Record date,problem,alternatives,decision,evidence,affected FR/API/entity/UI/phase IDs, migration/backward-compatibility implications and approval when scope changes. Update all impacted canonical files together and rerun docs/contract checks. Applied migrations immutable; code follows latest accepted specification, not retired architecture or historical AGENTS.md. Minor implementation file naming can vary without ADR if module boundaries/contracts unchanged. Ask only for a material scope/architecture decision not resolved by current user direction.
