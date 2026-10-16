@@ -1,17 +1,29 @@
-node_modules/
-dist/
-coverage/
-build/
-.env
-.env.*
-!.env.example
-uploads/
-logs/
-*.log
-*.tsbuildinfo
+# Local/editor/OS
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
-test-results/
+*.log
+.env
+.env.*
+!.env.example
+!.env.test.example
+
+# Future application build and dependencies
+node_modules/
+dist/
+build/
+coverage/
 playwright-report/
+test-results/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# Local private data and generated previews (selected assets live under app public tree)
+uploads/
+private-storage/
+.impeccable/
+.worktrees/
+__pycache__/
+*.pyc
