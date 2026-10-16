@@ -51,7 +51,7 @@ async function applyRuntimeGrants(migrationPool: Pool, runtimeRole: string): Pro
     GRANT SELECT, INSERT, UPDATE ON verification_requests TO ${quoted};
     GRANT SELECT, INSERT ON verification_documents TO ${quoted};
     GRANT SELECT, INSERT, UPDATE ON availability_windows TO ${quoted};
-    GRANT SELECT, INSERT, UPDATE ON booking_quotes TO ${quoted};
+    GRANT SELECT, INSERT ON booking_quotes TO ${quoted};
     GRANT SELECT, INSERT, UPDATE ON bookings TO ${quoted};
     GRANT SELECT, INSERT, UPDATE ON booking_decisions TO ${quoted};
     GRANT SELECT, INSERT, UPDATE ON carpools TO ${quoted};
@@ -61,6 +61,29 @@ async function applyRuntimeGrants(migrationPool: Pool, runtimeRole: string): Pro
     GRANT SELECT, INSERT ON trip_status_history TO ${quoted};
     GRANT SELECT, INSERT, UPDATE, DELETE ON idempotency_keys TO ${quoted};
     GRANT SELECT, INSERT ON audit_logs TO ${quoted};
+  `);
+  // Append-only posture (mirrors 0004_invariants): enforce by explicit
+  // revoke so pre-existing or migration-order drift cannot widen access.
+  await migrationPool.query(`
+    REVOKE UPDATE, DELETE ON booking_quotes FROM ${quoted};
+    REVOKE UPDATE, DELETE ON trip_status_history FROM ${quoted};
+    REVOKE UPDATE, DELETE ON audit_logs FROM ${quoted};
+    REVOKE UPDATE, DELETE ON verification_documents FROM ${quoted};
+    REVOKE DELETE ON verification_requests FROM ${quoted};
+    REVOKE DELETE ON users FROM ${quoted};
+    REVOKE DELETE ON user_roles FROM ${quoted};
+    REVOKE DELETE ON driver_profiles FROM ${quoted};
+    REVOKE DELETE ON vehicles FROM ${quoted};
+    REVOKE DELETE ON documents FROM ${quoted};
+    REVOKE DELETE ON availability_windows FROM ${quoted};
+    REVOKE DELETE ON bookings FROM ${quoted};
+    REVOKE DELETE ON booking_decisions FROM ${quoted};
+    REVOKE DELETE ON carpools FROM ${quoted};
+    REVOKE DELETE ON seat_requests FROM ${quoted};
+    REVOKE DELETE ON trips FROM ${quoted};
+    REVOKE DELETE ON resource_reservations FROM ${quoted};
+    REVOKE DELETE ON outbox_events FROM ${quoted};
+    REVOKE DELETE ON job_leases FROM ${quoted};
   `);
 }
 
@@ -87,7 +110,6 @@ const TRUNCATE_TABLES = [
   'refresh_sessions',
   'user_roles',
   'users',
-  'outbox_events',
   'rate_limit_buckets',
   'admin_policy',
   'job_leases',
@@ -118,7 +140,7 @@ export async function dropTestSchema(migrationPool: Pool): Promise<void> {
   );
   if (history.rows[0]?.r) {
     await migrationPool.query(
-      "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys')",
+      "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys', '0004_invariants')",
     );
   }
 }
@@ -149,7 +171,7 @@ export async function withTestDatabase<T>(
     if (!sentinel.rows[0]?.cities || !sentinel.rows[0]?.profiles || !sentinel.rows[0]?.journeys) {
       // History without tables (dropped without history reset): clear and redeploy.
       await migrationPool.query(
-        "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys')",
+        "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys', '0004_invariants')",
       );
       await deployTestMigrations(migrationUrl);
     }

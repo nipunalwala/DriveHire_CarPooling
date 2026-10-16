@@ -148,11 +148,16 @@ describe('Milestone02 Task3: booking, carpool and trip schema', () => {
         [s.passengerId, s.driverId, s.vehicleId, s.originId, s.destinationId, STARTS, ENDS],
       );
       const carpoolId = carpool.rows[0]?.id as string;
-      await pools.runtimePool.query(
+      const holder = await pools.runtimePool.connect();
+      await holder.query('BEGIN');
+      await holder.query(
         `INSERT INTO seat_requests(carpool_id, passenger_id, seats, status, price_per_seat_minor)
          VALUES ($1, $2, 1, 'ACCEPTED', 20000)`,
         [carpoolId, s.passengerId],
       );
+      await holder.query('UPDATE carpools SET confirmed_seats=1 WHERE id=$1', [carpoolId]);
+      await holder.query('COMMIT');
+      holder.release();
       await expect(
         pools.runtimePool.query(
           `INSERT INTO seat_requests(carpool_id, passenger_id, seats, status, price_per_seat_minor)

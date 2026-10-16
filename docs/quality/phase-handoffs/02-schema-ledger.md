@@ -58,3 +58,23 @@
   deferred to Task 4; 0003 has basic CHECK/FK/index shape only. Carpool
   `join_mode` constrained to INSTANT; no approval-seat columns. Fixture
   truncate/grants and P3009 history lists extended to 0003.
+
+## Task 4: SQL resource protections and runtime grants — GREEN 2026-10-17
+
+- RED: constraints suite 6/6 failed pre-0004 (missing exclusions/triggers).
+- GREEN: `npm run db:test:constraints` 6/6 via the new real PG runner
+  (replaces exit-2 placeholder; fails closed without dedicated target or
+  fixture). Overlap 23P01 + exact adjacency success, cross-driver vehicle
+  conflict, deferred mismatch failing at COMMIT with zero holds left,
+  XOR/reversed-interval 23514, capacity/sum guards, 42501 on immutable
+  rewrites. Full integration 22/22 across 5 files.
+- Full suite: unit 33/33, contract 1/1, typecheck, lint+boundaries,
+  docs:check, format:check, build — all exit 0.
+- Fixes during GREEN: per-side source matching (single-resource holds carry
+  one side of a two-resource source); TG_TABLE_NAME branching in the seat-sum
+  guard; fixture now explicitly REVOKEs append-only posture (self-healing
+  against grant drift); Task 3 live-seat test updated to bump confirmed_seats
+  in the same transaction (required by the new sum invariant).
+- Incident: edited-but-applied migrations don't redeploy (expected Prisma
+  behavior) — disposable test DB was fully reset to pick up fixed 0004 SQL.
+  Task 5 validate-schema must detect file-vs-applied drift in CI.
