@@ -50,10 +50,33 @@ async function applyRuntimeGrants(migrationPool: Pool, runtimeRole: string): Pro
     GRANT SELECT, INSERT, UPDATE ON documents TO ${quoted};
     GRANT SELECT, INSERT, UPDATE ON verification_requests TO ${quoted};
     GRANT SELECT, INSERT ON verification_documents TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON availability_windows TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON booking_quotes TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON bookings TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON booking_decisions TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON carpools TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON seat_requests TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON trips TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE ON resource_reservations TO ${quoted};
+    GRANT SELECT, INSERT ON trip_status_history TO ${quoted};
+    GRANT SELECT, INSERT, UPDATE, DELETE ON idempotency_keys TO ${quoted};
+    GRANT SELECT, INSERT ON audit_logs TO ${quoted};
   `);
 }
 
 const TRUNCATE_TABLES = [
+  'trip_status_history',
+  'trips',
+  'seat_requests',
+  'carpools',
+  'booking_decisions',
+  'bookings',
+  'booking_quotes',
+  'resource_reservations',
+  'availability_windows',
+  'idempotency_keys',
+  'audit_logs',
+  'outbox_events',
   'verification_documents',
   'verification_requests',
   'documents',
@@ -95,7 +118,7 @@ export async function dropTestSchema(migrationPool: Pool): Promise<void> {
   );
   if (history.rows[0]?.r) {
     await migrationPool.query(
-      "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification')",
+      "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys')",
     );
   }
 }
@@ -116,13 +139,17 @@ export async function withTestDatabase<T>(
   runtimePool.on('error', () => {});
   try {
     await deployTestMigrations(migrationUrl);
-    const sentinel = await migrationPool.query<{ cities: string | null; profiles: string | null }>(
-      "SELECT to_regclass('public.cities') AS cities, to_regclass('public.driver_profiles') AS profiles",
+    const sentinel = await migrationPool.query<{
+      cities: string | null;
+      profiles: string | null;
+      journeys: string | null;
+    }>(
+      "SELECT to_regclass('public.cities') AS cities, to_regclass('public.driver_profiles') AS profiles, to_regclass('public.bookings') AS journeys",
     );
-    if (!sentinel.rows[0]?.cities || !sentinel.rows[0]?.profiles) {
+    if (!sentinel.rows[0]?.cities || !sentinel.rows[0]?.profiles || !sentinel.rows[0]?.journeys) {
       // History without tables (dropped without history reset): clear and redeploy.
       await migrationPool.query(
-        "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification')",
+        "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys')",
       );
       await deployTestMigrations(migrationUrl);
     }

@@ -44,3 +44,17 @@
   LICENSE(drive-only)/REGISTRATION+INSURANCE(vehicle-only) enforced by
   trigger; driver rate CHECK 1..100000000 while contract allows 0 (service
   layer in 04 must reject 0 with 422).
+
+## Task 3: booking, carpool and trip schema — GREEN 2026-10-17
+
+- RED: `npm run test:integration -- .../resources/schema.integration.test.ts`
+  6 failed on missing tables.
+- GREEN: 6/6 pass (mode rejection, single DRIVER consent + anchor row check,
+  live-seat uniqueness, trip parent XOR/uniqueness, price/capacity bounds,
+  quote total=subtotal). Full integration 16/16 across 4 files.
+- Full suite: unit 33/33, contract 1/1, typecheck, lint+boundaries,
+  docs:check, format:check, build — all exit 0.
+- Notes: GiST exclusions and deferred source/parent triggers intentionally
+  deferred to Task 4; 0003 has basic CHECK/FK/index shape only. Carpool
+  `join_mode` constrained to INSTANT; no approval-seat columns. Fixture
+  truncate/grants and P3009 history lists extended to 0003.

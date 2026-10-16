@@ -275,3 +275,237 @@ model VerificationDocument {
   @@map("verification_documents")
   @@index([documentId])
 }
+
+model AvailabilityWindow {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driverId  String?   @map("driver_id") @db.Uuid
+  vehicleId String?   @map("vehicle_id") @db.Uuid
+  kind      String    @db.VarChar(16)
+  startsAt  DateTime  @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime  @map("ends_at") @db.Timestamptz(6)
+  removedAt DateTime? @map("removed_at") @db.Timestamptz(6)
+  version   Int       @default(1)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("availability_windows")
+  @@index([driverId, startsAt, endsAt])
+  @@index([vehicleId, startsAt, endsAt])
+}
+
+model BookingQuote {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requesterId        String   @map("requester_id") @db.Uuid
+  service            String   @db.VarChar(24)
+  vehicleId          String   @map("vehicle_id") @db.Uuid
+  driverId           String   @map("driver_id") @db.Uuid
+  vehicleVersion     Int      @map("vehicle_version")
+  driverVersion      Int      @map("driver_version")
+  startsAt           DateTime @map("starts_at") @db.Timestamptz(6)
+  endsAt             DateTime @map("ends_at") @db.Timestamptz(6)
+  originCityId       String   @map("origin_city_id") @db.Uuid
+  destinationCityId  String   @map("destination_city_id") @db.Uuid
+  passengers         Int      @db.SmallInt
+  billableHours      Int      @map("billable_hours")
+  driverRateMinor    Int      @map("driver_rate_minor")
+  driverSubtotalMinor BigInt  @map("driver_subtotal_minor")
+  totalMinor         BigInt   @map("total_minor")
+  currency           String   @default("INR") @db.Char(3)
+  expiresAt          DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  bookings           Booking[]
+
+  @@map("booking_quotes")
+  @@index([requesterId, createdAt])
+  @@index([expiresAt])
+}
+
+model Booking {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quoteId     String           @unique @map("quote_id") @db.Uuid
+  passengerId String           @map("passenger_id") @db.Uuid
+  vehicleId   String           @map("vehicle_id") @db.Uuid
+  driverId    String           @map("driver_id") @db.Uuid
+  service     String           @db.VarChar(24)
+  status      String           @default("PENDING") @db.VarChar(16)
+  startsAt    DateTime         @map("starts_at") @db.Timestamptz(6)
+  endsAt      DateTime         @map("ends_at") @db.Timestamptz(6)
+  totalMinor  BigInt           @map("total_minor")
+  currency    String           @default("INR") @db.Char(3)
+  expiresAt   DateTime         @map("expires_at") @db.Timestamptz(6)
+  cancelReason String?         @map("cancel_reason")
+  version     Int              @default(1)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  quote       BookingQuote     @relation(fields: [quoteId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  decisions   BookingDecision[]
+  trips       Trip[]
+
+  @@map("bookings")
+  @@index([passengerId, createdAt])
+  @@index([driverId, status, startsAt])
+  @@index([vehicleId, status, startsAt])
+  @@index([status, expiresAt])
+}
+
+model BookingDecision {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId  String   @unique @map("booking_id") @db.Uuid
+  providerId String   @map("provider_id") @db.Uuid
+  kind       String   @db.VarChar(16)
+  status     String   @default("PENDING") @db.VarChar(16)
+  decidedAt  DateTime? @map("decided_at") @db.Timestamptz(6)
+  reason     String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("booking_decisions")
+  @@index([providerId, status])
+  @@index([bookingId])
+}
+
+model Carpool {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostId            String   @map("host_id") @db.Uuid
+  driverId          String   @map("driver_id") @db.Uuid
+  vehicleId         String   @map("vehicle_id") @db.Uuid
+  originCityId      String   @map("origin_city_id") @db.Uuid
+  destinationCityId String   @map("destination_city_id") @db.Uuid
+  pickupNote        String   @map("pickup_note") @db.VarChar(300)
+  dropoffNote       String   @map("dropoff_note") @db.VarChar(300)
+  startsAt          DateTime @map("starts_at") @db.Timestamptz(6)
+  endsAt            DateTime @map("ends_at") @db.Timestamptz(6)
+  seatsOffered      Int      @map("seats_offered") @db.SmallInt
+  confirmedSeats    Int      @default(0) @map("confirmed_seats") @db.SmallInt
+  pricePerSeatMinor Int      @map("price_per_seat_minor")
+  currency          String   @default("INR") @db.Char(3)
+  joinMode          String   @map("join_mode") @db.VarChar(16)
+  status            String   @default("DRAFT") @db.VarChar(16)
+  publishedAt       DateTime? @map("published_at") @db.Timestamptz(6)
+  version           Int      @default(1)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  seatRequests      SeatRequest[]
+  trips             Trip[]
+
+  @@map("carpools")
+  @@index([originCityId, destinationCityId, startsAt])
+  @@index([hostId, startsAt])
+  @@index([status, startsAt])
+}
+
+model SeatRequest {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  carpoolId         String   @map("carpool_id") @db.Uuid
+  passengerId       String   @map("passenger_id") @db.Uuid
+  seats             Int      @db.SmallInt
+  status            String   @db.VarChar(16)
+  pricePerSeatMinor Int      @map("price_per_seat_minor")
+  message           String?  @db.VarChar(500)
+  reason            String?
+  version           Int      @default(1)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  carpool           Carpool  @relation(fields: [carpoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("seat_requests")
+  @@index([passengerId, createdAt])
+  @@index([carpoolId, status])
+}
+
+model Trip {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bookingId   String?   @unique @map("booking_id") @db.Uuid
+  carpoolId   String?   @unique @map("carpool_id") @db.Uuid
+  driverId    String    @map("driver_id") @db.Uuid
+  vehicleId   String    @map("vehicle_id") @db.Uuid
+  status      String    @default("SCHEDULED") @db.VarChar(16)
+  startsAt    DateTime  @map("starts_at") @db.Timestamptz(6)
+  endsAt      DateTime  @map("ends_at") @db.Timestamptz(6)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  incidentFlag Boolean  @default(false) @map("incident_flag")
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  booking     Booking?  @relation(fields: [bookingId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  carpool     Carpool?  @relation(fields: [carpoolId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  history     TripStatusHistory[]
+
+  @@map("trips")
+  @@index([driverId, status, startsAt])
+  @@index([vehicleId, status, startsAt])
+  @@index([status, endsAt])
+}
+
+model ResourceReservation {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driverId            String?   @map("driver_id") @db.Uuid
+  vehicleId           String?   @map("vehicle_id") @db.Uuid
+  bookingId           String?   @map("booking_id") @db.Uuid
+  carpoolId           String?   @map("carpool_id") @db.Uuid
+  availabilityBlockId String?   @map("availability_block_id") @db.Uuid
+  startsAt            DateTime  @map("starts_at") @db.Timestamptz(6)
+  endsAt              DateTime  @map("ends_at") @db.Timestamptz(6)
+  releasedAt          DateTime? @map("released_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("resource_reservations")
+  @@index([bookingId])
+  @@index([carpoolId])
+  @@index([availabilityBlockId])
+}
+
+model TripStatusHistory {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId      String   @map("trip_id") @db.Uuid
+  fromStatus  String?  @map("from_status") @db.VarChar(16)
+  toStatus    String   @map("to_status") @db.VarChar(16)
+  actorId     String?  @map("actor_id") @db.Uuid
+  actorType   String   @map("actor_type") @db.VarChar(16)
+  reason      String?
+  metadata    Json     @default("{}")
+  tripVersion Int      @map("trip_version")
+  requestId   String   @map("request_id") @db.VarChar(80)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@map("trip_status_history")
+  @@unique([tripId, tripVersion])
+  @@index([tripId, createdAt])
+}
+
+model IdempotencyKey {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  operation      String   @db.VarChar(80)
+  key            String   @db.VarChar(128)
+  requestHash    String   @map("request_hash") @db.Char(64)
+  responseStatus Int      @map("response_status") @db.SmallInt
+  responseBody   Json     @map("response_body")
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("idempotency_keys")
+  @@unique([userId, operation, key])
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId     String?  @map("actor_id") @db.Uuid
+  actorType   String   @map("actor_type") @db.VarChar(16)
+  action      String   @db.VarChar(100)
+  subjectType String   @map("subject_type") @db.VarChar(60)
+  subjectId   String   @map("subject_id") @db.Uuid
+  reason      String?
+  requestId   String   @map("request_id") @db.VarChar(80)
+  beforeSafe  Json?    @map("before_safe")
+  afterSafe   Json?    @map("after_safe")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("audit_logs")
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+  @@index([subjectType, subjectId, createdAt])
+}
