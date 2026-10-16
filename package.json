@@ -26,8 +26,9 @@
     "test:integration": "vitest run --config vitest.integration.config.ts --fileParallelism=false",
     "test:e2e": "node scripts/unavailable-suite.mjs e2e Phase14",
     "docs:check": "python -m unittest discover -s docs -p test_check_scope.py && python docs/check_plan.py && node scripts/validate-openapi.mjs",
-    "db:validate": "node scripts/unavailable-suite.mjs schema Phase02",
-    "db:migrate:deploy": "node scripts/unavailable-suite.mjs migrations Phase02",
+    "db:validate": "node scripts/validate-schema.mjs",
+    "db:migrate:deploy": "node scripts/migrate.mjs",
+    "db:generate": "node scripts/generate-client.mjs",
     "db:test:constraints": "node scripts/test-constraints.mjs",
     "infra:check": "node scripts/check-local-services.mjs"
   },

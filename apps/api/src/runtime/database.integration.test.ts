@@ -44,4 +44,30 @@ describe('PostgreSQL foundation and migration-aware readiness', () => {
       });
     });
   });
+
+  it('fresh_and_incremental_migrate_match', async () => {
+    await withTestDatabase(async ({ migrationPool, runtimePool }) => {
+      await dropTestSchema(migrationPool);
+      await deployTestMigrations(requireTestDatabaseUrl(process.env.TEST_MIGRATION_DATABASE_URL));
+      const marker = await migrationPool.query(
+        "INSERT INTO cities(name, region, country, timezone) VALUES ('Fresh', 'Test', 'IN', 'Asia/Kolkata') RETURNING id",
+      );
+      const markerId = marker.rows[0]?.id as string;
+      const before = await migrationPool.query(
+        'SELECT migration_name, checksum FROM _prisma_migrations ORDER BY 1',
+      );
+      await deployTestMigrations(requireTestDatabaseUrl(process.env.TEST_MIGRATION_DATABASE_URL));
+      const after = await migrationPool.query(
+        'SELECT migration_name, checksum FROM _prisma_migrations ORDER BY 1',
+      );
+      expect(after.rows).toEqual(before.rows);
+      const kept = await runtimePool.query('SELECT id FROM cities WHERE id = $1', [markerId]);
+      expect(kept.rows).toHaveLength(1);
+      expect(await probeReadiness(runtimePool)).toEqual({
+        database: true,
+        schema: true,
+        worker: false,
+      });
+    });
+  });
 });

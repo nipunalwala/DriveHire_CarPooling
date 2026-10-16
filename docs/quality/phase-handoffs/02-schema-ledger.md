@@ -78,3 +78,30 @@
 - Incident: edited-but-applied migrations don't redeploy (expected Prisma
   behavior) — disposable test DB was fully reset to pick up fixed 0004 SQL.
   Task 5 validate-schema must detect file-vs-applied drift in CI.
+
+## Task 5: migration reproducibility and real readiness — GREEN 2026-10-17
+
+- RED: `npm run db:validate` exited 2 (unavailable-suite placeholder).
+- GREEN: new `scripts/migrate.mjs` (migrator-identity guard, `--target
+  test|dev`), `scripts/validate-schema.mjs` (`prisma validate` + file
+  presence + sha256 file-vs-history drift check), `scripts/generate-client.mjs`
+  (offline-safe). Chain `db:validate && db:migrate:deploy && db:test:constraints
+  && test:integration` fully green against dedicated test services.
+- Tests: `readiness.integration.test.ts` (worker lease transitions via the
+  real worker heartbeat functions, deferred-catalog absence),
+  `fresh_and_incremental_migrate_match` (drop → deploy → marker →
+  redeploy keeps history identical and data intact). Full integration 26/26
+  across 6 files, twice including once on a discarded-and-recreated tmpfs DB.
+- CI: verify job generates the client pre-typecheck; infrastructure job runs
+  generate → validate → test services → migrate deploy → integration →
+  constraints → infra check. (Remote CI execution not claimed; Dockerfiles
+  untouched.)
+- Full suite: unit 33/33, contract 1/1, typecheck, lint+boundaries,
+  docs:check, format:check, build — all exit 0.
+- Fixes during GREEN: top-level `return` illegal in ESM scripts (main()
+  wrapper); `--target test` spaceless-arg parsing; prisma.config needs
+  MIGRATION_DATABASE_URL even for offline steps (dummy fallback in scripts
+  only, never for deploy); serial file execution kept (26 tests, ~1 min).
+- Incident: external test-container stop mid-milestone discarded tmpfs DB;
+  suite self-healed via deploy-on-fixture. `02-schema.md` handoff written.
+  Next: independent whole-branch review, then Milestone03.
