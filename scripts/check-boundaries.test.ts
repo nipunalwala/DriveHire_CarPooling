@@ -36,6 +36,24 @@ describe('browser/server dependency boundary', () => {
       ),
     ).toEqual([]);
   });
+  it.each(['apps/web/src/entry.ts', 'packages/contracts/src/index.ts'])(
+    'rejects alternate and unresolved dependency forms in %s',
+    async (file) => {
+      for (const source of [
+        'void import(`../../api/src/config/env.js`)',
+        'void import("pg/lib/client.js")',
+        'void import("prisma/build/index.js")',
+        'void import("C:/server/private.js")',
+        'void import("/src/server/private.js")',
+        'void import("file:///server/private.js")',
+        'void import("/@fs/C:/server/private.js")',
+        'void import(target)',
+        'require(`pg/${target}`)',
+      ]) {
+        expect(await checkBoundaries(await fixture(file, source)), source).toHaveLength(1);
+      }
+    },
+  );
   it('rejects server imports from the shared contract package too', async () => {
     expect(
       await checkBoundaries(

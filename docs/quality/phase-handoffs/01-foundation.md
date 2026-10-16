@@ -20,7 +20,7 @@ These commands ran locally with Node24.22.0. HTTP/Docker tests needed execution 
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
 | `npm ci`                       | Clean Windows locked install completed,438 packages added                                                          |
 | `npm audit --audit-level=high` | 0 vulnerabilities reported                                                                                         |
-| `npm run test:unit`            | 28 tests passed across9 files                                                                                      |
+| `npm run test:unit`            | 33 tests passed across10 files after independent-review fixes                                                      |
 | `npm run test:contract`        | 1 test passed on actual Express handlers                                                                           |
 | `npm run test:integration`     | 2 real PostgreSQL tests passed: restricted role/extension availability and missing-schema readiness                |
 | `npm run infra:check`          | Mailpit SMTP/HTTP and ClamAV PING responded                                                                        |
@@ -41,4 +41,16 @@ No business tables or migrations were created. `btree_gist` availability was que
 
 Phase02 uses [02 Database Schema and Migrations](../../implementation-prompts/02-DATABASE-SCHEMA-MIGRATIONS.md), stable Prisma7.10.1 candidate plus compatible client/adapter, the approved entity dictionary and raw SQL invariants. Extend the integration suite for migrated-schema/heartbeat fixtures; preserve the missing-dependency behavior. New database role grants, exclusions and migrations require actual fresh/incremental PostgreSQL tests. Review [development instructions](../../operations/development.md) before using either Compose environment.
 
-Independent review outcome and any corrections will be recorded below before the phase is declared complete.
+## Independent review and corrections
+
+A fresh-context reviewer assessed `60ba6a2..5e5235a`: no Critical findings, three Important findings, no Minor findings. All three Important findings were reproduced with failing regressions and fixed in one pass:
+
+- Test database URLs now require the dedicated database, explicit local port55433 or Compose host `database-test:5432`, and no query/fragment. This prevents PostgreSQL query options from overriding the validated target.
+- Actual HTTP completion and unexpected-error logs retain the response request ID. The regression forces a serialization failure and checks that query, authorization and exception secrets remain absent.
+- Import boundaries cover literal templates, package subpaths, absolute/file/Vite filesystem imports and unresolved computed imports in both browser and shared-contract code. Computed imports must be replaced with statically inspectable literals.
+
+The focused run changed from four failures to15/15 passing. The final suite passed33 unit,1 contract and2 real PostgreSQL integration tests; local service checks passed. Typecheck, lint, documentation validation and formatting also passed after the fixes. Earlier container/browser evidence above covers the foundation shell; the reviewer did not independently rerun container/dependency checks. Final production/container build results are recorded in the execution ledger.
+
+The review explicitly set aside later-phase business behavior, migrated schema/heartbeat success, real adapter behavior, production/recovery/load/full-accessibility acceptance, remote CI/fresh container dependency verification, and interruption as a business-work recovery guarantee. These remain unclaimed. The complete decisions and their costs are archived in [the execution ledger](01-foundation-ledger.md). No deferred minor findings.
+
+Final host and both Docker builds passed. The shared backend NODE_ENV originally triggered Vite's internal marker guard and then development-runtime selection; a failing regression led to explicit API-value injection, disabled automatic backend-env reload, and marker cleanup. Actual Vite production configuration now resolves as production. The final host bundle is285.09kB/89.66kB gzip.

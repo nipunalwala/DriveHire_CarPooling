@@ -10,7 +10,10 @@ export function requireTestDatabaseUrl(value: string | undefined): string {
   if (
     !['postgres:', 'postgresql:'].includes(url.protocol) ||
     !['localhost', '127.0.0.1', 'database-test'].includes(url.hostname) ||
-    url.pathname !== '/drivehire_test'
+    url.pathname !== '/drivehire_test' ||
+    url.search !== '' ||
+    url.hash !== '' ||
+    (url.hostname === 'database-test' ? url.port !== '5432' : url.port !== '55433')
   ) {
     throw new Error('Refusing database target outside the dedicated local drivehire_test database');
   }

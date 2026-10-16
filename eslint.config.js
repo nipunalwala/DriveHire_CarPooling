@@ -30,7 +30,19 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'no-restricted-imports': [
         'error',
-        { patterns: ['**/api/**', '**/prisma/**', '@drivehire/api', '@prisma/*', 'pg', 'node:*'] },
+        {
+          patterns: [
+            '**/api/**',
+            '**/prisma/**',
+            '@drivehire/api',
+            '@prisma/*',
+            'pg',
+            'pg/**',
+            'prisma',
+            'prisma/**',
+            'node:*',
+          ],
+        },
       ],
     },
   },
@@ -39,7 +51,18 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { patterns: ['**/api/**', '**/web/**', '@prisma/*', 'pg', 'node:*'] },
+        {
+          patterns: [
+            '**/api/**',
+            '**/web/**',
+            '@prisma/*',
+            'pg',
+            'pg/**',
+            'prisma',
+            'prisma/**',
+            'node:*',
+          ],
+        },
       ],
     },
   },

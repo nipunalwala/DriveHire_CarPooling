@@ -57,6 +57,7 @@ export function createApp(options: { config: Config; logger: Logger; readiness: 
     pinoHttp({
       logger: options.logger,
       genReqId: (_req, res) => String(res.getHeader('X-Request-ID')),
+      customProps: (_req, res) => ({ requestId: String(res.getHeader('X-Request-ID')) }),
       wrapSerializers: false,
       serializers: {
         req: (req: IncomingMessage) => ({ method: req.method, url: req.url?.split('?')[0] }),
@@ -92,7 +93,7 @@ export function createApp(options: { config: Config; logger: Logger; readiness: 
   app.use((_req, _res, next) => {
     next(new HttpError(404, 'NOT_FOUND', 'Resource not found'));
   });
-  const errors: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
+  const errors: ErrorRequestHandler = (error: unknown, req, res, _next) => {
     let failure = new HttpError(500, 'INTERNAL_ERROR', 'An unexpected error occurred');
     if (error instanceof HttpError) failure = error;
     else if (error instanceof SyntaxError && 'status' in error && error.status === 400)
@@ -105,7 +106,7 @@ export function createApp(options: { config: Config; logger: Logger; readiness: 
     )
       failure = new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Request body exceeds the limit');
     if (failure.status === 500)
-      options.logger.error(safeErrorMetadata(error), 'Unexpected request failure');
+      req.log.error(safeErrorMetadata(error), 'Unexpected request failure');
     res.status(failure.status).json({
       success: false,
       error: {

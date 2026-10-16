@@ -42,30 +42,34 @@ export async function checkBoundaries(root) {
         if (
           (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
           node.moduleSpecifier &&
-          ts.isStringLiteral(node.moduleSpecifier)
+          ts.isStringLiteralLike(node.moduleSpecifier)
         )
           module = node.moduleSpecifier.text;
         if (
           ts.isCallExpression(node) &&
           (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-            (ts.isIdentifier(node.expression) && node.expression.text === 'require')) &&
-          node.arguments[0] &&
-          ts.isStringLiteral(node.arguments[0])
-        )
-          module = node.arguments[0].text;
+            (ts.isIdentifier(node.expression) && node.expression.text === 'require'))
+        ) {
+          if (node.arguments[0] && ts.isStringLiteralLike(node.arguments[0]))
+            module = node.arguments[0].text;
+          else issues.push(`${relative(root, file)} imports an unresolved computed dependency`);
+        }
         if (module) {
           const forbiddenPackage =
             module.startsWith('node:') ||
             builtins.has(module) ||
             module === 'pg' ||
+            module.startsWith('pg/') ||
             module.startsWith('@prisma/') ||
             module === 'prisma' ||
+            module.startsWith('prisma/') ||
             (module.startsWith('@drivehire/') && module !== '@drivehire/contracts');
+          const forbiddenAbsolute = /^(?:[a-z][a-z0-9+.-]*:|[/\\])/i.test(module);
           const forbiddenRelative =
             module.startsWith('.') &&
             !inside(own, resolve(dirname(file), module)) &&
             !(section === 'apps/web/src' && inside(shared, resolve(dirname(file), module)));
-          if (forbiddenPackage || forbiddenRelative)
+          if (forbiddenPackage || forbiddenRelative || forbiddenAbsolute)
             issues.push(`${relative(root, file)} imports forbidden dependency ${module}`);
         }
         ts.forEachChild(node, inspect);

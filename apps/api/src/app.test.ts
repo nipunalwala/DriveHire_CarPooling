@@ -13,6 +13,33 @@ const config = parseEnv({
 const makeApp = (readiness = async () => ({ database: false, schema: false, worker: false })) =>
   createApp({ config, logger: createLogger('silent'), readiness });
 describe('API operational boundary', () => {
+  it('correlates completion and unexpected-error logs without logging secrets', async () => {
+    const lines: string[] = [];
+    const logger = createLogger('info', {
+      write: (line: string) => {
+        lines.push(line);
+      },
+    });
+    const app = createApp({
+      config,
+      logger,
+      readiness: async () => ({ database: false, schema: false, worker: false }),
+    });
+    app.set('json replacer', (key: string, value: unknown) => {
+      if (key === 'status') throw new Error('private-failure-detail');
+      return value;
+    });
+    const response = await request(app)
+      .get('/api/v1/health?token=private-query')
+      .set('X-Request-ID', 'review-request-123')
+      .set('Authorization', 'Bearer private-auth');
+    expect(response.status).toBe(500);
+    const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(records.length).toBeGreaterThanOrEqual(2);
+    for (const record of records) expect(record.requestId).toBe(response.headers['x-request-id']);
+    expect(records.some((record) => record.msg === 'Unexpected request failure')).toBe(true);
+    expect(lines.join('')).not.toMatch(/private-query|private-auth|private-failure-detail/);
+  });
   it('returns liveness independently of readiness and includes security/correlation headers', async () => {
     const result = await request(makeApp())
       .get('/api/v1/health')
