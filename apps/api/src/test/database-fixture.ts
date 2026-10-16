@@ -180,6 +180,9 @@ export async function withTestDatabase<T>(
     const reset = async (): Promise<void> => {
       await assertDedicatedTarget(migrationPool, runtimePool);
       await migrationPool.query(`TRUNCATE ${TRUNCATE_TABLES} CASCADE`);
+      await migrationPool.query(
+        'INSERT INTO admin_policy (id, version) VALUES (1, 1) ON CONFLICT DO NOTHING',
+      );
       await applyRuntimeGrants(migrationPool, runtimeRoleOf(runtimeUrl));
     };
     await reset();

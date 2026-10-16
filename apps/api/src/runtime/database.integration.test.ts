@@ -45,6 +45,13 @@ describe('PostgreSQL foundation and migration-aware readiness', () => {
     });
   });
 
+  it('admin_policy_singleton_survives_reset', async () => {
+    await withTestDatabase(async ({ runtimePool }) => {
+      const policy = await runtimePool.query('SELECT id, version FROM admin_policy');
+      expect(policy.rows).toEqual([{ id: 1, version: 1 }]);
+    });
+  });
+
   it('fresh_and_incremental_migrate_match', async () => {
     await withTestDatabase(async ({ migrationPool, runtimePool }) => {
       await dropTestSchema(migrationPool);

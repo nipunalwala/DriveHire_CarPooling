@@ -83,10 +83,10 @@
 
 - RED: `npm run db:validate` exited 2 (unavailable-suite placeholder).
 - GREEN: new `scripts/migrate.mjs` (migrator-identity guard, `--target
-  test|dev`), `scripts/validate-schema.mjs` (`prisma validate` + file
+test|dev`), `scripts/validate-schema.mjs` (`prisma validate` + file
   presence + sha256 file-vs-history drift check), `scripts/generate-client.mjs`
   (offline-safe). Chain `db:validate && db:migrate:deploy && db:test:constraints
-  && test:integration` fully green against dedicated test services.
+&& test:integration` fully green against dedicated test services.
 - Tests: `readiness.integration.test.ts` (worker lease transitions via the
   real worker heartbeat functions, deferred-catalog absence),
   `fresh_and_incremental_migrate_match` (drop → deploy → marker →
@@ -105,3 +105,16 @@
 - Incident: external test-container stop mid-milestone discarded tmpfs DB;
   suite self-healed via deploy-on-fixture. `02-schema.md` handoff written.
   Next: independent whole-branch review, then Milestone03.
+
+## Independent review (2026-10-17) — PASS, findings closed
+
+- Verdict: no Critical, 1 Important, 4 Minor.
+- Important (fixed test-first): `reset()` truncated the migration-seeded
+  `admin_policy` singleton. Regression `admin_policy_singleton_survives_reset`
+  failed, then `reset()` re-inserts `(1,1)` idempotently. 27/27 integration.
+- Minor rulings: `users.phone UNIQUE` kept as intentional hardening
+  (nullable; multiple NULLs allowed); cities.timezone IANA stays service-layer
+  until curated seeds (tracked); `wrong_source` assertion pinned to `23503`;
+  guard percent-encoding hardening deferred as optional.
+- Full re-grade after fixes: integration 27/27, unit 33/33, contract 1/1,
+  typecheck, lint, docs:check, format:check, build — all exit 0.

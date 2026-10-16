@@ -176,7 +176,7 @@ describe('Milestone02 Task4: SQL resource protections and runtime grants', () =>
            VALUES ($1, $2, $3, $4)`,
           [s.driver2Id, bookingA, A_START, A_END],
         );
-        await expect(client.query('COMMIT')).rejects.toBeDefined();
+        await expect(client.query('COMMIT')).rejects.toMatchObject({ code: '23503' });
       } finally {
         try {
           await client.query('ROLLBACK');
