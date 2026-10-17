@@ -20,5 +20,7 @@ export type ApiErrorResponse = z.infer<typeof ApiErrorSchema>;
 export type ApiSuccess<T> = { success: true; data: T };
 export type PageMeta = { page: number; pageSize: number; total: number };
 
-export const UserRoleSchema = z.enum(['PASSENGER', 'DRIVER', 'OWNER', 'ADMIN']);
+export const UserRoleSchema = z.enum(['PASSENGER', 'DRIVER', 'ADMIN']);
 export type UserRole = z.infer<typeof UserRoleSchema>;
+
+export * from './auth.js';

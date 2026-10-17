@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { ApiErrorSchema, HealthResponseSchema } from './index.js';
+import { ApiErrorSchema, HealthResponseSchema, UserRoleSchema } from './index.js';
+
+it('retires the OWNER role from active contracts', () => {
+  expect(UserRoleSchema.safeParse('OWNER').success).toBe(false);
+  expect(UserRoleSchema.parse('PASSENGER')).toBe('PASSENGER');
+  expect(UserRoleSchema.parse('DRIVER')).toBe('DRIVER');
+  expect(UserRoleSchema.parse('ADMIN')).toBe('ADMIN');
+});
 
 describe('public operational contracts', () => {
   it('accepts a live health response and rejects extra private fields', () => {
