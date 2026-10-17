@@ -21,7 +21,14 @@ export default defineConfig(({ mode }) => {
     envDir: false,
     envPrefix: 'VITE_API_BASE_URL',
     define: { 'import.meta.env.VITE_API_BASE_URL': JSON.stringify(apiPath) },
-    server: { port: 5173, strictPort: true, proxy: { '/api': 'http://127.0.0.1:4000' } },
+    server: {
+      port: 5173,
+      strictPort: true,
+      proxy: {
+        '/api':
+          process.env.DRIVEHIRE_E2E === '1' ? 'http://127.0.0.1:4002' : 'http://127.0.0.1:4000',
+      },
+    },
     build: { sourcemap: false },
   };
 });

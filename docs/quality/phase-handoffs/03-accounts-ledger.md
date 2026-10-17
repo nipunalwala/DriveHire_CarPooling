@@ -1,5 +1,19 @@
 # Milestone03 execution ledger (scratch; archived into 03-accounts.md at completion)
 
+## Task3 frontend implementation — 2026-10-18
+
+Codex implemented the authentication/profile interface under the owner's authorization to continue all tasks and own UI/UX. OpenCode independently proceeds with Phase04 backend work; its files are excluded from the frontend commit. See `docs/design/auth-interface-direction.md`, `DESIGN.md` and `docs/operations/browser-tests.md`.
+
+- Added same-origin envelope API client with in-memory bearer and bounded authenticated retry; five focused client tests pass.
+- Added AuthProvider, per-tab single-flight and cross-tab Web Locks refresh, sign-out BroadcastChannel and protected destination recovery. No tokens are persisted in localStorage.
+- Added register, verify-email, login, forgot/reset-password and profile pages, reusable controls/feedback and responsive public shell. Shared role enablement clearly distinguishes capability from qualification approval.
+- Observed a meaningful component RED: `/login` lacked the Welcome back heading/form. After implementation the component/client suite passes seven tests.
+- Added exact-pinned Playwright1.64.1, executable `npm run test:e2e`, dedicated `compose.e2e.yml` and a real API/web/email fixture. Browser test data is separate from backend integration data. Added a guard regression that failed before accepting only the explicit additional test port55434; wrong database and port55435 remain refused.
+- Desktop and mobile:10 real authentication scenarios passed, including registration/OTP/login/profile persistence/logout, protected redirect, invalid-field keyboard/error focus, one failed refresh and actual Mailpit password reset revoking the old session. Initial reset scenario failed on an ambiguous label locator; exact input locator fixed it, without changing application behavior.
+- Two additional desktop/mobile layout captures pass overflow checks and were visually inspected together. No layout defects found in that inspection. Browser credentials stay in memory/HttpOnly cookies. QA captures are ignored artifacts, not generated product images.
+- Frontend production build passes; frontend lint and the existing dependency-boundary checker pass. Focused frontend/database guard/boundary tests:17 passed. Full milestone review and final integrated verification are still required; no full Phase03 completion claim is made here.
+- Narrow lint correction: browser imports of its own `src/api/client.ts` are permitted; server packages remain restricted, and the AST boundary checker still rejects relative imports outside the browser/shared-contract roots.
+
 ## Owner approval — recorded 2026-10-17
 
 The owner said "Continue the work" after Milestone02 completion and presented the

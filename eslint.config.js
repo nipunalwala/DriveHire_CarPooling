@@ -33,7 +33,7 @@ export default tseslint.config(
         'error',
         {
           patterns: [
-            '**/api/**',
+            '**/apps/api/**',
             '**/prisma/**',
             '@drivehire/api',
             '@prisma/*',

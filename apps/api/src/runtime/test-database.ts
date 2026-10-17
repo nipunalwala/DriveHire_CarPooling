@@ -13,7 +13,9 @@ export function requireTestDatabaseUrl(value: string | undefined): string {
     url.pathname !== '/drivehire_test' ||
     url.search !== '' ||
     url.hash !== '' ||
-    (url.hostname === 'database-test' ? url.port !== '5432' : url.port !== '55433')
+    (url.hostname === 'database-test'
+      ? url.port !== '5432'
+      : !['55433', '55434'].includes(url.port))
   ) {
     throw new Error('Refusing database target outside the dedicated local drivehire_test database');
   }
