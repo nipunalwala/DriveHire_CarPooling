@@ -1,0 +1,7 @@
+# Generated project image policy
+
+The lean release retains original generated editorial imagery. Milestone07 generates two service-concept images (driver hiring and shared journey) after Impeccable placements/crops are defined. Earlier functional screens do not claim generated assets exist. Use the imagegen skill and built-in image generation tool, inspect originals/crops, select optimized responsive variants and commit them under apps/web/public/images/generated/. A tool cache or remote link is not a committed asset.
+
+For each selected asset record exact prompt, tool/date, original source path/name, edits/conversion, output filenames/dimensions/formats, intended page, composition rationale, decorative status or exact alt text and responsive crop. Review contrast, loading dimensions and page performance. Native icons remain code/vector where appropriate. If generation fails, report the failure rather than invent provenance or substitute an unapproved stock source.
+
+No generated actual provider/customer identity, listing photo, qualification document, license/registration/insurance, verified badge, testimonial or operational evidence. Generic people are illustrative, never presented as platform users. Actual private evidence stays separate and protected. No rental/combined-service imagery or false inventory claims. This manifest is a policy until assets are actually generated; milestone07 fills the real provenance entries.

@@ -1,0 +1,509 @@
+[
+  {
+    "key": "landing",
+    "route": "/",
+    "role": "Public",
+    "purpose": "Driver hiring and carpooling",
+    "ops": [
+      "listCities"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/public/LandingPage.tsx"
+  },
+  {
+    "key": "driver-listings",
+    "route": "/drivers",
+    "role": "Public",
+    "purpose": "Find eligible drivers",
+    "ops": [
+      "listCities",
+      "searchDrivers"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/drivers/DriverListingsPage.tsx"
+  },
+  {
+    "key": "driver-detail",
+    "route": "/drivers/:id",
+    "role": "Public",
+    "purpose": "Driver profile and hire action",
+    "ops": [
+      "getDriver"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/drivers/DriverDetailPage.tsx"
+  },
+  {
+    "key": "carpool-search",
+    "route": "/carpools",
+    "role": "Public",
+    "purpose": "Find scheduled seats",
+    "ops": [
+      "listCities",
+      "searchCarpools"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/carpools/CarpoolSearchPage.tsx"
+  },
+  {
+    "key": "carpool-detail",
+    "route": "/carpools/:id",
+    "role": "Public",
+    "purpose": "Safe ride summary and instant join",
+    "ops": [
+      "getCarpool",
+      "requestSeat"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/carpools/CarpoolDetailPage.tsx"
+  },
+  {
+    "key": "login",
+    "route": "/login",
+    "role": "Public",
+    "purpose": "Sign in",
+    "ops": [
+      "login"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/LoginPage.tsx"
+  },
+  {
+    "key": "register",
+    "route": "/register",
+    "role": "Public",
+    "purpose": "Create account",
+    "ops": [
+      "register"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/RegisterPage.tsx"
+  },
+  {
+    "key": "verify-email",
+    "route": "/verify-email",
+    "role": "Public",
+    "purpose": "Verify email",
+    "ops": [
+      "verifyEmail",
+      "resendOtp"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/VerifyEmailPage.tsx"
+  },
+  {
+    "key": "forgot-password",
+    "route": "/forgot-password",
+    "role": "Public",
+    "purpose": "Request password recovery",
+    "ops": [
+      "forgotPassword"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/ForgotPasswordPage.tsx"
+  },
+  {
+    "key": "reset-password",
+    "route": "/reset-password",
+    "role": "Public",
+    "purpose": "Reset password",
+    "ops": [
+      "resetPassword"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/auth/ResetPasswordPage.tsx"
+  },
+  {
+    "key": "profile",
+    "route": "/app/profile",
+    "role": "Authenticated",
+    "purpose": "Own profile and sessions",
+    "ops": [
+      "getMe",
+      "updateMe",
+      "addRole",
+      "listSessions",
+      "revokeSession",
+      "logout",
+      "logoutAll",
+      "refresh"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/profile/ProfilePage.tsx"
+  },
+  {
+    "key": "personal-vehicles",
+    "route": "/app/vehicles",
+    "role": "Verified user",
+    "purpose": "Own vehicle registration and private evidence",
+    "ops": [
+      "listMyVehicles",
+      "createVehicle",
+      "updateVehicle",
+      "archiveVehicle",
+      "uploadVehicleDoc",
+      "listVehicleDocs",
+      "submitVehicle",
+      "getDocument",
+      "deleteDocument"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/providers/PersonalVehiclesPage.tsx"
+  },
+  {
+    "key": "booking-create",
+    "route": "/app/bookings/new",
+    "role": "PASSENGER",
+    "purpose": "Quote and request external driver with own vehicle",
+    "ops": [
+      "listMyVehicles",
+      "searchDrivers",
+      "quoteBooking",
+      "createBooking"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/bookings/BookingCreatePage.tsx"
+  },
+  {
+    "key": "passenger-bookings",
+    "route": "/app/bookings",
+    "role": "PASSENGER",
+    "purpose": "Bookings and history",
+    "ops": [
+      "listBookings",
+      "cancelBooking"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/bookings/PassengerBookingsPage.tsx"
+  },
+  {
+    "key": "passenger-booking-detail",
+    "route": "/app/bookings/:id",
+    "role": "Participant",
+    "purpose": "Booking status and cancellation",
+    "ops": [
+      "getBooking",
+      "cancelBooking",
+      "getTrip",
+      "tripHistory"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/bookings/PassengerBookingDetailPage.tsx"
+  },
+  {
+    "key": "active-trip",
+    "route": "/app/trips/:id",
+    "role": "Participant",
+    "purpose": "Manual trip status and history",
+    "ops": [
+      "listTrips",
+      "getTrip",
+      "tripHistory",
+      "transitionTrip"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/trips/ActiveTripPage.tsx"
+  },
+  {
+    "key": "passenger-carpool-history",
+    "route": "/app/seats",
+    "role": "PASSENGER",
+    "purpose": "Own carpool participation",
+    "ops": [
+      "listMySeats",
+      "getCarpool",
+      "cancelSeat"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/seats/PassengerCarpoolHistoryPage.tsx"
+  },
+  {
+    "key": "driver-verification",
+    "route": "/app/driver/profile",
+    "role": "DRIVER",
+    "purpose": "Driver profile and private qualification",
+    "ops": [
+      "getMyDriver",
+      "updateDriver",
+      "listCities",
+      "uploadDriverDoc",
+      "listDriverDocs",
+      "submitDriver"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/providers/DriverVerificationPage.tsx"
+  },
+  {
+    "key": "driver-availability",
+    "route": "/app/driver/availability",
+    "role": "DRIVER",
+    "purpose": "Availability and accepting-bookings setting",
+    "ops": [
+      "listDriverAvailability",
+      "createDriverAvailability",
+      "deleteDriverAvailability",
+      "setDriverListing"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/providers/DriverAvailabilityPage.tsx"
+  },
+  {
+    "key": "driver-requests",
+    "route": "/app/driver/bookings",
+    "role": "DRIVER",
+    "purpose": "Decide requests and inspect history",
+    "ops": [
+      "listDriverBookings",
+      "getBooking",
+      "decideBooking"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/bookings/DriverRequestsPage.tsx"
+  },
+  {
+    "key": "carpool-create",
+    "route": "/app/carpools/new",
+    "role": "DRIVER",
+    "purpose": "Draft and publish owned-vehicle ride",
+    "ops": [
+      "listMyVehicles",
+      "getMyDriver",
+      "listCities",
+      "createCarpool",
+      "updateCarpool",
+      "publishCarpool"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/carpools/CarpoolCreatePage.tsx"
+  },
+  {
+    "key": "hosted-carpools",
+    "route": "/app/carpools",
+    "role": "DRIVER",
+    "purpose": "Own rides and participants",
+    "ops": [
+      "listMyCarpools",
+      "getCarpool",
+      "updateCarpool",
+      "publishCarpool",
+      "cancelCarpool",
+      "listSeatRequests"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/carpools/HostedCarpoolsPage.tsx"
+  },
+  {
+    "key": "admin-users",
+    "route": "/admin/users",
+    "role": "ADMIN",
+    "purpose": "Inspect, suspend and reactivate accounts",
+    "ops": [
+      "adminUsers",
+      "adminUser",
+      "suspendUser",
+      "reactivateUser"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/admin/users/AdminUsersPage.tsx"
+  },
+  {
+    "key": "admin-verification",
+    "route": "/admin/verifications",
+    "role": "ADMIN",
+    "purpose": "Review driver and personal-vehicle evidence",
+    "ops": [
+      "adminVerifications",
+      "adminVerification",
+      "getDocument",
+      "decideVerification"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/admin/verification/AdminVerificationPage.tsx"
+  },
+  {
+    "key": "admin-operations",
+    "route": "/admin/operations",
+    "role": "ADMIN",
+    "purpose": "Inspect and resolve booking/ride incidents",
+    "ops": [
+      "adminBookings",
+      "adminCarpools",
+      "adminTrips",
+      "getBooking",
+      "getCarpool",
+      "getTrip",
+      "cancelBooking",
+      "cancelCarpool",
+      "transitionTrip"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/admin/operations/AdminOperationsPage.tsx"
+  },
+  {
+    "key": "admin-audit",
+    "route": "/admin/audit",
+    "role": "ADMIN",
+    "purpose": "Read immutable administrative actions",
+    "ops": [
+      "adminAudit"
+    ],
+    "layout": "Shared responsive shell; task-focused content",
+    "components": "Accessible forms, status, primary action and contextual recovery",
+    "interaction": "Persist mutations through documented API; reload on version conflict",
+    "empty": "Explain no results and offer relevant next action; no fabricated inventory",
+    "error": "Inline safe error, preserve valid input and offer retry",
+    "success": "Show server-returned persisted state",
+    "responsive": "Keyboard operable at320px through desktop; no horizontal page overflow",
+    "file": "apps/web/src/features/admin/AdminAuditPage.tsx"
+  }
+]

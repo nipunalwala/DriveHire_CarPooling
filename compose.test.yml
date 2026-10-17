@@ -1,0 +1,27 @@
+name: drivehire-test
+services:
+  database-test:
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    environment:
+      POSTGRES_USER: ${TEST_POSTGRES_USER:?Run local env initialization}
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:?Run local env initialization}
+      POSTGRES_DB: drivehire_test
+      RUNTIME_DB_USER: drivehire_test_runtime
+      RUNTIME_DB_PASSWORD: ${TEST_RUNTIME_DB_PASSWORD:?Run local env initialization}
+    ports: ['127.0.0.1:55433:5432']
+    tmpfs: ['/var/lib/postgresql/data']
+    volumes: ['./docker/postgres/init-runtime.sh:/docker-entrypoint-initdb.d/10-runtime.sh:ro']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d drivehire_test']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  mailpit-test:
+    image: axllent/mailpit@sha256:23fe39e81bde596a918000b3135c0f85dc8bb4c9ea6be274b051143f3e300387
+    ports: ['127.0.0.1:11025:1025', '127.0.0.1:18025:8025']
+  scanner-test:
+    image: clamav/clamav@sha256:638d90201ee7ee6a82d249a2fc23b132e578673b5f1f2766852b127676ca1ef6
+    ports: ['127.0.0.1:13310:3310']
+    volumes: ['clamav-test:/var/lib/clamav']
+volumes:
+  clamav-test:

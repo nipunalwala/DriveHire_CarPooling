@@ -1,0 +1,13 @@
+node_modules/
+apps/api/src/generated/
+**/dist/
+package-lock.json
+.tools/
+.cache/
+.superpowers/
+artifacts/
+__pycache__/
+docs/planning-model.json
+docs/planning/screens.json
+docs/api/openapi.json
+docs/archive/full-platform-2026-10-17/

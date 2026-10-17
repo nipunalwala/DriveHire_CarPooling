@@ -1,0 +1,7 @@
+# 16 · Deployment and environments
+
+Use retained Docker Compose development/test isolation with loopback ports, pinned non-root images, private volume outside static serving, PostgreSQL migration/runtime roles, SMTP/Mailpit and ClamAV. Node24.22.0/npm11.19.1 baseline and lockfile; .env stays ignored, generated local credentials never overwrite existing file. Production requires HTTPS, explicit Origin/cookie settings, SMTP credentials, encryption/signing secrets and private storage. Browser receives only approved API base; backend NODE_ENV must not downgrade production React.
+
+Migration deploy uses reviewed forward-only SQL before application readiness. Back up database and private evidence consistently with key recovery; rehearse restore into isolated environment, integrity checks and application smoke. Record measured recovery times without inventing guarantees. Health proves process liveness; ready requires actual DB/schema/current worker heartbeat and bounded timeout. Handle termination while serving and during real jobs; no new work after shutdown begins, durable leases recover interrupted work.
+
+CI runs locked install, typecheck, lint, docs, unit/contract/integration, build and appropriate E2E with disposable services. Deploy checklist includes least privilege, volumes, retention, TLS, redacted logs, secrets and real restore results. Owner chooses destination and separately authorizes production launch. Local build or authored workflow is not remote deployment evidence.
