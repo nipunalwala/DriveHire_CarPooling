@@ -105,9 +105,7 @@ async function registerAndVerify(email: string): Promise<void> {
   if (!sent) throw new Error('Registration did not queue verification mail');
   const code = /code is ([0-9]{6})/.exec(sent.text)?.[1];
   if (!code) throw new Error('Verification mail did not contain a six-digit code');
-  const verified = await request(app)
-    .post('/api/v1/auth/verify-email')
-    .send({ email, code });
+  const verified = await request(app).post('/api/v1/auth/verify-email').send({ email, code });
   expect(verified.status).toBe(200);
 }
 
@@ -312,14 +310,12 @@ describe('Milestone03 Task1: account contracts and current authentication', () =
     await withTestDatabase(async ({ runtimePool }) => {
       const email = 'grants@example.com';
       const app = buildApp();
-      const bad = await request(app)
-        .post('/api/v1/auth/register')
-        .send({
-          displayName: 'Grants',
-          email,
-          password: 'CorrectHorse1!',
-          role: 'ADMIN',
-        });
+      const bad = await request(app).post('/api/v1/auth/register').send({
+        displayName: 'Grants',
+        email,
+        password: 'CorrectHorse1!',
+        role: 'ADMIN',
+      });
       expect(bad.status).toBe(400);
       await registerAndVerify(email);
       const account = await login(email);

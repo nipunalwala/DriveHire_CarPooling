@@ -1,17 +1,16 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { hash as argon2Hash, verify as argon2Verify } from '@node-rs/argon2';
 import { SignJWT, jwtVerify } from 'jose';
-import type { z } from 'zod';
-import type {
+import type { NextFunction, Request, Response } from 'express';
+import { z } from 'zod';
+import {
   EmailInputSchema,
   LoginInputSchema,
-  PageMeta,
-  Page,
+  OtpInputSchema,
   RegisterInputSchema,
   ResetInputSchema,
-  SessionDto,
-  UserDto,
 } from '@drivehire/contracts';
+import type { Page, PageMeta, SessionDto, UserDto } from '@drivehire/contracts';
 import type { MailAdapter } from '../../ports.js';
 import type { PrismaClient } from '../../generated/client/client.js';
 import type { Config } from '../../config/env.js';
@@ -26,11 +25,16 @@ import {
 
 export type Role = 'PASSENGER' | 'DRIVER' | 'ADMIN';
 export type CurrentAccount = { userId: string; roles: Role[]; sessionId: string };
+/** Express request narrowed after requireAccount succeeded. */
+export type AccountRequest = Request & { account?: CurrentAccount };
+
+/** Minimal delegate surface shared by the client and an interactive transaction. */
+type Db = Pick<PrismaClient, 'refreshToken' | 'refreshSession' | 'user'>;
 
 const ACCESS_TTL_SECONDS = 900;
 const ACCESS_TTL_CLAIM = '15m';
 const FAMILY_TTL_DAYS = 30;
-const REFRESH_COOKIE_TTL_SECONDS = 30 * 24 * 24 * 3600 === 0 ? 0 : 30 * 24 * 3600;
+const REFRESH_COOKIE_TTL_SECONDS = FAMILY_TTL_DAYS * 24 * 3600;
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -107,19 +111,13 @@ export interface AccountsService {
   forgotPassword(input: unknown, mail: MailAdapter): Promise<{ acknowledged: true }>;
   resetPassword(input: unknown): Promise<{ acknowledged: true }>;
   enableDriver(account: CurrentAccount): Promise<UserDto>;
-  requireAccount(
-    req: { headers: Record<string, string | string[] | undefined> },
-    res: unknown,
-    next: (error?: unknown) => void,
-  ): void;
+  requireAccount(req: Request, res: Response, next: NextFunction): void;
 }
 
-const PageQuerySchema = z.coerce
-  .object({
-    page: z.coerce.number().int().min(1).max(2147483647).default(1),
-    pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  })
-  .strict();
+const PageQuerySchema = z.strictObject({
+  page: z.coerce.number().int().min(1).max(2147483647).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 export function createAccountsService({
   prisma,
@@ -131,15 +129,7 @@ export function createAccountsService({
   const issuerKey = new TextEncoder().encode(config.authJwtSecret);
 
   function hmacHex(domain: string, value: string): string {
-    return createHmac('sha256', config.authJwtSecret)
-      .update(`${domain}:${value}`)
-      .digest('hex');
-  }
-
-  function digest(value: string): string {
-    return createHmac('sha256', config.authJwtSecret)
-      .update(`digest:${value}`)
-      .digest('hex');
+    return createHmac('sha256', config.authJwtSecret).update(`${domain}:${value}`).digest('hex');
   }
 
   function newOpaqueToken(): string {
@@ -187,7 +177,7 @@ export function createAccountsService({
     await prisma.refreshToken.create({
       data: {
         sessionId: session.id,
-        tokenHash: digest(refreshToken),
+        tokenHash: hmacHex('refresh', refreshToken),
         expiresAt: absoluteExpiresAt,
       },
     });
@@ -209,36 +199,47 @@ export function createAccountsService({
     };
   }
 
-  /** Replay-of-any-token evidence revokes the whole rotation family. */
-  async function revokeFamily(sessionId: string, reason: string): Promise<void> {
-    await prisma.$transaction([
-      prisma.refreshToken.updateMany({
-        where: { sessionId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      }),
-      prisma.refreshSession.update({
-        where: { id: sessionId },
-        data: { revokedAt: new Date(), revocationReason: reason },
-      }),
-    ]);
+  /**
+   * Replay-of-any-token evidence revokes the whole rotation family. Every token
+   * in the family is both revoked and consumed so a concurrent replay can never
+   * leave a usable successor. Runs on the supplied client so callers can keep it
+   * inside the transaction that observed the race.
+   */
+  async function revokeFamily(db: Db, sessionId: string, reason: string): Promise<void> {
+    const now = new Date();
+    await db.refreshToken.updateMany({
+      where: { sessionId, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    await db.refreshToken.updateMany({
+      where: { sessionId, consumedAt: null },
+      data: { consumedAt: now },
+    });
+    await db.refreshSession.update({
+      where: { id: sessionId },
+      data: { revokedAt: now, revocationReason: reason },
+    });
   }
 
   /** Account-level credential invalidation shared by reset and logout-all. */
-  async function revokeAllSessions(userId: string, reason: string): Promise<void> {
-    await prisma.$transaction([
-      prisma.refreshToken.updateMany({
-        where: { session: { userId }, revokedAt: null },
-        data: { revokedAt: new Date() },
-      }),
-      prisma.refreshSession.updateMany({
-        where: { userId, revokedAt: null },
-        data: { revokedAt: new Date(), revocationReason: reason },
-      }),
-      prisma.user.update({
-        where: { id: userId },
-        data: { tokenVersion: { increment: 1 } },
-      }),
-    ]);
+  async function revokeAllSessions(db: Db, userId: string, reason: string): Promise<void> {
+    const now = new Date();
+    await db.refreshToken.updateMany({
+      where: { session: { userId }, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    await db.refreshToken.updateMany({
+      where: { session: { userId }, consumedAt: null },
+      data: { consumedAt: now },
+    });
+    await db.refreshSession.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: now, revocationReason: reason },
+    });
+    await db.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } },
+    });
   }
 
   function parseOrBadRequest<T extends z.ZodType>(schema: T, input: unknown): z.infer<T> {
@@ -370,10 +371,7 @@ export function createAccountsService({
       if (!challenge) throw badRequest('Verification code is invalid or expired');
       const expected = Buffer.from(hmacHex('otp', payload.code), 'hex');
       const stored = Buffer.from(challenge.secretHash, 'hex');
-      if (
-        stored.length !== expected.length ||
-        !timingSafeEqual(stored, expected)
-      ) {
+      if (stored.length !== expected.length || !timingSafeEqual(stored, expected)) {
         // Atomic conditional attempt bump: an exhausted row can never pass.
         // Exactly five wrong attempts are allowed; the sixth is a conflict.
         const bumped = await prisma.authChallenge.updateMany({
@@ -494,20 +492,16 @@ export function createAccountsService({
       const now = new Date();
       const rotated = await prisma.$transaction(async (tx) => {
         const row = await tx.refreshToken.findUnique({
-          where: { tokenHash: digest(rawRefreshToken) },
+          where: { tokenHash: hmacHex('refresh', rawRefreshToken) },
           include: { session: true },
         });
         if (!row) return null;
         if (row.revokedAt || row.consumedAt) {
           // Replay of an already-rotated or revoked token kills the family.
-          await revokeFamily(row.sessionId, 'REPLAY');
+          await revokeFamily(tx, row.sessionId, 'REPLAY');
           return null;
         }
-        if (
-          row.session.revokedAt ||
-          row.session.absoluteExpiresAt <= now ||
-          row.expiresAt <= now
-        ) {
+        if (row.session.revokedAt || row.session.absoluteExpiresAt <= now || row.expiresAt <= now) {
           return null;
         }
         const successor = newOpaqueToken();
@@ -518,7 +512,7 @@ export function createAccountsService({
         await tx.refreshToken.create({
           data: {
             sessionId: row.sessionId,
-            tokenHash: digest(successor),
+            tokenHash: hmacHex('refresh', successor),
             parentTokenId: row.id,
             expiresAt: row.session.absoluteExpiresAt,
           },
@@ -536,21 +530,23 @@ export function createAccountsService({
       if (rawRefreshToken) {
         await prisma.$transaction(async (tx) => {
           const row = await tx.refreshToken.findUnique({
-            where: { tokenHash: digest(rawRefreshToken) },
+            where: { tokenHash: hmacHex('refresh', rawRefreshToken) },
             select: { sessionId: true },
           });
-          if (row) await revokeFamily(row.sessionId, 'LOGOUT');
+          if (row) await revokeFamily(tx, row.sessionId, 'LOGOUT');
         });
       }
       if (bearer) {
         const account = await accountFromBearer(bearer);
-        if (account) await revokeFamily(account.sessionId, 'LOGOUT');
+        if (account) {
+          await prisma.$transaction((tx) => revokeFamily(tx, account.sessionId, 'LOGOUT'));
+        }
       }
       return { acknowledged: true };
     },
 
     async logoutAll(account) {
-      await revokeAllSessions(account.userId, 'LOGOUT_ALL');
+      await prisma.$transaction((tx) => revokeAllSessions(tx, account.userId, 'LOGOUT_ALL'));
       return { acknowledged: true };
     },
 
@@ -593,7 +589,7 @@ export function createAccountsService({
         select: { id: true, userId: true },
       });
       if (!session || session.userId !== account.userId) throw notFound('Session not found');
-      await revokeFamily(session.id, 'REVOKED');
+      await prisma.$transaction((tx) => revokeFamily(tx, session.id, 'REVOKED'));
       return { acknowledged: true };
     },
 
@@ -678,16 +674,14 @@ export function createAccountsService({
       });
       if (consumed.count === 0) throw badRequest('Reset link is invalid or expired');
       const passwordHashed = await passwordHash(payload.newPassword);
-      await prisma.$transaction([
-        prisma.user.update({
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
           where: { id: challenge.userId },
           data: { passwordHash: passwordHashed },
-        }),
-        ...(
-          [] as Array<Parameters<typeof prisma.refreshToken.updateMany>[0]>
-        ),
-      ]);
-      await revokeAllSessions(challenge.userId, 'PASSWORD_RESET');
+        });
+        // Every existing access/refresh credential stops being valid.
+        await revokeAllSessions(tx, challenge.userId, 'PASSWORD_RESET');
+      });
       return { acknowledged: true };
     },
 
@@ -726,7 +720,7 @@ export function createAccountsService({
             next(unauthenticated('Authentication required'));
             return;
           }
-          (req as { account?: CurrentAccount }).account = account;
+          (req as AccountRequest).account = account;
           next();
         })
         .catch(() => next(unauthenticated('Authentication required')));

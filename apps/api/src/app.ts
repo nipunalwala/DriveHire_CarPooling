@@ -7,19 +7,16 @@ import { pinoHttp } from 'pino-http';
 import type { Logger } from 'pino';
 import type { Config } from './config/env.js';
 import { safeErrorMetadata } from './config/logger.js';
+import { HttpError } from './errors.js';
+import type { MailAdapter } from './ports.js';
+import type { PrismaClient } from './generated/client/client.js';
+import { createAccountsRouter } from './modules/accounts/routes.js';
 
 export type ReadinessState = { database: boolean; schema: boolean; worker: boolean };
 export type ReadinessProbe = () => Promise<ReadinessState>;
 
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+/** Optional real account dependencies; absent means only operational routes mount. */
+export type AccountsDependencies = { prisma: PrismaClient; mail: MailAdapter };
 
 async function isReady(probe: ReadinessProbe): Promise<boolean> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -39,7 +36,12 @@ async function isReady(probe: ReadinessProbe): Promise<boolean> {
   }
 }
 
-export function createApp(options: { config: Config; logger: Logger; readiness: ReadinessProbe }) {
+export function createApp(options: {
+  config: Config;
+  logger: Logger;
+  readiness: ReadinessProbe;
+  accounts?: AccountsDependencies;
+}) {
   const app = express();
   app.disable('x-powered-by');
   app.disable('etag');
@@ -90,6 +92,16 @@ export function createApp(options: { config: Config; logger: Logger; readiness: 
     if (await isReady(options.readiness)) res.json({ success: true, data: { status: 'ok' } });
     else next(new HttpError(503, 'DEPENDENCY_UNAVAILABLE', 'Service is not ready'));
   });
+  if (options.accounts) {
+    app.use(
+      '/api/v1',
+      createAccountsRouter({
+        prisma: options.accounts.prisma,
+        config: options.config,
+        mail: options.accounts.mail,
+      }),
+    );
+  }
   app.use((_req, _res, next) => {
     next(new HttpError(404, 'NOT_FOUND', 'Resource not found'));
   });

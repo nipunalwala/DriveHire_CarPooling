@@ -15,7 +15,11 @@ export const LoginInputSchema = z.strictObject({
 });
 export const OtpInputSchema = z.strictObject({
   email: z.email().max(254),
-  code: z.string().min(6).max(6).regex(/^[0-9]{6}$/),
+  code: z
+    .string()
+    .min(6)
+    .max(6)
+    .regex(/^[0-9]{6}$/),
 });
 export const EmailInputSchema = z.strictObject({
   email: z.email().max(254),
@@ -26,15 +30,20 @@ export const ResetInputSchema = z.strictObject({
 });
 export const ProfileInputSchema = z
   .strictObject({
-    displayName: z.string().min(1).max(80),
-    phone: z.string().min(1).max(16).regex(/^\+[1-9][0-9]{7,14}$/),
+    displayName: z.string().min(1).max(80).optional(),
+    phone: z
+      .string()
+      .min(1)
+      .max(16)
+      .regex(/^\+[1-9][0-9]{7,14}$/)
+      .optional(),
   })
-  .superRefine((value, context) => {
-    if (Object.keys(value).length === 0) {
-      context.addIssue({ code: 'custom', message: 'At least one profile field is required' });
-    }
+  .refine((value) => Object.keys(value).length >= 1, {
+    message: 'At least one profile field is required',
   });
-export const RoleInputSchema = z.strictObject({ role: z.enum(['PASSENGER', 'DRIVER', 'ADMIN']) });
+// Active OpenAPI RoleInput allows only the self-grantable DRIVER value; ADMIN is
+// operator-granted and ownership is an object relationship, not a role.
+export const RoleInputSchema = z.strictObject({ role: z.literal('DRIVER') });
 
 export const UserSchema = z.strictObject({
   id: z.uuid(),
