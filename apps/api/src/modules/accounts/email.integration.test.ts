@@ -8,6 +8,7 @@ import { createLogger } from '../../config/logger.js';
 import { createPrisma } from '../../runtime/prisma.js';
 import { requireTestDatabaseUrl } from '../../runtime/test-database.js';
 import { withTestDatabase } from '../../test/database-fixture.js';
+import { testMailpitUrl, testSmtpPort } from '../../test/test-services.js';
 import type { MailAdapter } from '../../ports.js';
 import { createSmtpMail, SmtpError } from '../../adapters/smtp-mail.js';
 import { createAuthEmailDelivery } from './email-jobs.js';
@@ -22,7 +23,7 @@ try {
 const JWT_SECRET = randomBytes(32).toString('base64url');
 const OUTBOX_KEY = randomBytes(32).toString('base64url');
 const APP_ORIGIN = 'http://localhost:5173';
-const MAILPIT_API = 'http://127.0.0.1:18025';
+const MAILPIT_API = testMailpitUrl();
 
 const databaseUrl = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL);
 const prisma = createPrisma(databaseUrl);
@@ -38,7 +39,7 @@ const config = parseEnv({
   AUTH_JWT_SECRET: JWT_SECRET,
   AUTH_OUTBOX_KEY: OUTBOX_KEY,
   SMTP_HOST: '127.0.0.1',
-  SMTP_PORT: '11025',
+  SMTP_PORT: testSmtpPort(),
 });
 
 function buildApp(loggerLines?: string[]) {

@@ -209,7 +209,14 @@ async function sendSmtp(
     await session.command(`RCPT TO:<${sanitize(message.recipient)}>`);
     await session.command('DATA');
     const accepted = await session.command(`${buildMessage(config, message)}\r\n.`);
-    await session.command('QUIT');
+    // The message is accepted once DATA returns 2xx. QUIT is a courtesy close:
+    // a failure or an already-closed socket must never turn an accepted message
+    // into a reported delivery failure (which would duplicate the email).
+    try {
+      await session.command('QUIT');
+    } catch {
+      /* best-effort close; acceptance is already recorded */
+    }
     const queued = /queued as ([A-Za-z0-9._<>@-]+)/.exec(accepted)?.[1];
     return { providerMessageId: queued ?? message.messageId };
   } finally {

@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { loadEnvFile } from 'node:process';
+import { hash as argon2Hash } from '@node-rs/argon2';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { MailAdapter } from '../../ports.js';
@@ -408,9 +409,18 @@ describe('Milestone03 Task1: account contracts and current authentication', () =
         .post('/api/v1/auth/verify-email')
         .send({ email: 'nobody@example.com', code: '123456' });
       expect(verifyUnknown.status).toBe(400);
+      // A real known-unverified challenge must answer with the same generic
+      // message as the unknown address (no enumeration signal).
+      const knownEmail = 'knownverify@example.com';
+      const registered = await request(app)
+        .post('/api/v1/auth/register')
+        .set('Origin', APP_ORIGIN)
+        .send({ displayName: 'Known Verify', email: knownEmail, password: 'CorrectHorse1!' });
+      expect(registered.status).toBe(202);
       const verifyKnownBad = await request(app)
         .post('/api/v1/auth/verify-email')
-        .send({ email: 'resetter@example.com', code: '000000' });
+        .send({ email: knownEmail, code: '000000' });
+      expect(verifyKnownBad.status).toBe(400);
       expect(verifyKnownBad.body.error.message).toBe(verifyUnknown.body.error.message);
     });
   });
@@ -440,6 +450,323 @@ describe('Milestone03 Task1: account contracts and current authentication', () =
         .set('Authorization', `Bearer ${bob.accessToken}`);
       expect(stillWorks.status).toBe(200);
       void runtimePool;
+    });
+  });
+
+  it('login_is_serialized_against_concurrent_password_change', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'loginrace@example.com';
+      await registerAndVerify(email);
+      const app = buildApp();
+      const userRow = await migrationPool.query<{ id: string }>(
+        'SELECT id FROM users WHERE email=$1',
+        [email],
+      );
+      const userId = userRow.rows[0]?.id as string;
+
+      // Deterministically simulate an in-flight reset: hold the account row lock.
+      const client = await migrationPool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId]);
+        // Fire a login with the pre-reset password; its serialized section must
+        // block behind the lock instead of committing a stale session.
+        const pending = request(app)
+          .post('/api/v1/auth/login')
+          .set('Origin', APP_ORIGIN)
+          .send({ email, password: 'CorrectHorse1!' });
+        // Let the request read and verify the pre-reset credential first.
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const rotatedHash = await argon2Hash('RotationPassword9!');
+        await client.query(
+          'UPDATE users SET password_hash=$1, token_version=token_version+1 WHERE id=$2',
+          [rotatedHash, userId],
+        );
+        await client.query('COMMIT');
+
+        const response = await pending;
+        expect(response.status).toBe(401);
+        expect(response.body.error.code).toBe('UNAUTHENTICATED');
+        // No session may survive the credential change.
+        const sessions = await migrationPool.query<{ n: string }>(
+          'SELECT COUNT(*)::text AS n FROM refresh_sessions WHERE user_id=$1',
+          [userId],
+        );
+        expect(sessions.rows[0]?.n).toBe('0');
+      } finally {
+        client.release();
+      }
+    });
+  });
+
+  it('refresh_rejects_suspended_user', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'refreshsuspended@example.com';
+      await registerAndVerify(email);
+      const account = await login(email);
+      const app = buildApp();
+      await migrationPool.query("UPDATE users SET status='SUSPENDED' WHERE email=$1", [email]);
+      const refreshed = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Origin', APP_ORIGIN)
+        .set('Cookie', `${REFRESH_COOKIE}=${account.refreshToken}`);
+      expect(refreshed.status).toBe(401);
+      expect(refreshed.body.error.code).toBe('UNAUTHENTICATED');
+      const session = await migrationPool.query<{ revoked_at: string | null }>(
+        `SELECT s.revoked_at FROM refresh_sessions s JOIN users u ON u.id = s.user_id
+         WHERE u.email=$1`,
+        [email],
+      );
+      expect(session.rows[0]?.revoked_at).not.toBeNull();
+    });
+  });
+
+  it('resend_cooldown_is_generic_for_known_and_unknown', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'resendcooldown@example.com';
+      const app = buildApp();
+      // A real known-unverified account with a live VERIFY_EMAIL challenge whose
+      // 60s cooldown is still active.
+      const registered = await request(app)
+        .post('/api/v1/auth/register')
+        .set('Origin', APP_ORIGIN)
+        .send({ displayName: 'Resend Cooldown', email, password: 'CorrectHorse1!' });
+      expect(registered.status).toBe(202);
+      // A known address inside cooldown must get the same generic 202 as an
+      // unknown one, and no second email job may be emitted.
+      const known = await request(app)
+        .post('/api/v1/auth/resend-otp')
+        .set('Origin', APP_ORIGIN)
+        .send({ email });
+      expect(known.status).toBe(202);
+      expect(known.body).toEqual({ success: true, data: { acknowledged: true } });
+      const unknown = await request(app)
+        .post('/api/v1/auth/resend-otp')
+        .set('Origin', APP_ORIGIN)
+        .send({ email: 'nobody@example.com' });
+      expect(unknown.status).toBe(202);
+      expect(unknown.body).toEqual({ success: true, data: { acknowledged: true } });
+      const jobs = await migrationPool.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM outbox_events o JOIN users u ON u.id = o.aggregate_id
+         WHERE u.email=$1 AND o.event_type='AUTH_VERIFY_EMAIL'`,
+        [email],
+      );
+      expect(jobs.rows[0]?.n).toBe('1');
+    });
+  });
+
+  it('forgot_password_flood_is_rate_limited', async () => {
+    await withTestDatabase(async () => {
+      const email = 'forgotflood@example.com';
+      await registerAndVerify(email);
+      const app = buildApp();
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const response = await request(app)
+          .post('/api/v1/auth/forgot-password')
+          .set('Origin', APP_ORIGIN)
+          .send({ email });
+        expect(response.status).toBe(202);
+      }
+      // The sixth request for the same address is refused before any email work.
+      const limited = await request(app)
+        .post('/api/v1/auth/forgot-password')
+        .set('Origin', APP_ORIGIN)
+        .send({ email });
+      expect(limited.status).toBe(429);
+      expect(limited.body.error.code).toBe('RATE_LIMITED');
+      expect(limited.headers['retry-after']).toBeDefined();
+    });
+  });
+
+  it('login_is_route_rate_limited_with_retry_after', async () => {
+    await withTestDatabase(async () => {
+      const email = 'loginlimit@example.com';
+      await registerAndVerify(email);
+      const app = buildApp();
+      let limited: request.Response | undefined;
+      for (let attempt = 1; attempt <= 11; attempt += 1) {
+        const response = await request(app)
+          .post('/api/v1/auth/login')
+          .send({ email, password: 'CorrectHorse1!' });
+        if (response.status === 429) {
+          limited = response;
+          break;
+        }
+        expect(response.status).toBe(200);
+      }
+      expect(limited?.status).toBe(429);
+      expect(limited?.body.error.code).toBe('RATE_LIMITED');
+      expect(limited?.headers['retry-after']).toBeDefined();
+    });
+  });
+
+  it('concurrent_forgot_serializes_outbox_versions', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'outboxrace@example.com';
+      await registerAndVerify(email);
+      const app = buildApp();
+      // Concurrent resets for the same account must serialize the aggregate
+      // version instead of colliding on the unique key (which surfaced as 500).
+      const responses = await Promise.all(
+        Array.from({ length: 4 }, () =>
+          request(app)
+            .post('/api/v1/auth/forgot-password')
+            .set('Origin', APP_ORIGIN)
+            .send({ email }),
+        ),
+      );
+      for (const response of responses) expect(response.status).toBe(202);
+      const rows = await migrationPool.query<{ aggregate_version: number }>(
+        `SELECT o.aggregate_version FROM outbox_events o JOIN users u ON u.id = o.aggregate_id
+         WHERE u.email=$1 AND o.event_type='AUTH_RESET_PASSWORD'
+         ORDER BY o.aggregate_version`,
+        [email],
+      );
+      expect(rows.rows.map((row) => Number(row.aggregate_version))).toEqual([1, 2, 3, 4]);
+    });
+  });
+
+  it('role_extra_property_is_validation_error', async () => {
+    await withTestDatabase(async () => {
+      const email = 'roleextra@example.com';
+      await registerAndVerify(email);
+      const account = await login(email);
+      const app = buildApp();
+      const extra = await request(app)
+        .post('/api/v1/users/me/roles')
+        .set('Authorization', `Bearer ${account.accessToken}`)
+        .send({ role: 'DRIVER', isAdmin: true });
+      expect(extra.status).toBe(400);
+      expect(extra.body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  it('cookie_routes_reject_foreign_origin', async () => {
+    await withTestDatabase(async () => {
+      const email = 'origin@example.com';
+      await registerAndVerify(email);
+      const app = buildApp();
+
+      // Cookie-writing routes must not answer a browser request from an origin
+      // outside the allowlist: the existing CORS guard rejects it before any
+      // credential is checked, and no refresh cookie is ever emitted.
+      const foreignLogin = await request(app)
+        .post('/api/v1/auth/login')
+        .set('Origin', 'http://evil.example')
+        .send({ email, password: 'CorrectHorse1!' });
+      expect(foreignLogin.status).toBe(403);
+      expect(foreignLogin.body.error.code).toBe('FORBIDDEN');
+      expect(foreignLogin.headers['set-cookie']).toBeUndefined();
+
+      const account = await login(email);
+      const foreignRefresh = await request(app)
+        .post('/api/v1/auth/refresh')
+        .set('Origin', 'http://evil.example')
+        .set('Cookie', `${REFRESH_COOKIE}=${account.refreshToken}`);
+      expect(foreignRefresh.status).toBe(403);
+      expect(foreignRefresh.body.error.code).toBe('FORBIDDEN');
+      expect(foreignRefresh.headers['set-cookie']).toBeUndefined();
+    });
+  });
+
+  it('concurrent_otp_verify_single_use', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'otprace@example.com';
+      const app = buildApp();
+      const registered = await request(app)
+        .post('/api/v1/auth/register')
+        .set('Origin', APP_ORIGIN)
+        .send({ displayName: 'Otp Race', email, password: 'CorrectHorse1!' });
+      expect(registered.status).toBe(202);
+      await flushEmail();
+      const sent = mail.seen.at(-1);
+      const code = /code is ([0-9]{6})/.exec(sent?.text ?? '')?.[1];
+      if (!code) throw new Error('Verification mail missing');
+
+      // The same valid OTP raced across requests must verify exactly once.
+      const responses = await Promise.all(
+        Array.from({ length: 3 }, () =>
+          request(app).post('/api/v1/auth/verify-email').send({ email, code }),
+        ),
+      );
+      expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+      const user = await migrationPool.query<{ email_verified_at: string | null }>(
+        'SELECT email_verified_at FROM users WHERE email=$1',
+        [email],
+      );
+      expect(user.rows[0]?.email_verified_at).not.toBeNull();
+    });
+  });
+
+  it('concurrent_reset_token_single_use', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'resetrace@example.com';
+      await registerAndVerify(email);
+      const userRow = await migrationPool.query<{ id: string }>(
+        'SELECT id FROM users WHERE email=$1',
+        [email],
+      );
+      const userId = userRow.rows[0]?.id as string;
+      const rawToken = randomBytes(32).toString('base64url');
+      await migrationPool.query(
+        `INSERT INTO auth_challenges(user_id, purpose, secret_hash, expires_at, resend_after)
+         VALUES ($1, 'RESET_PASSWORD', $2, now() + interval '15 minutes', now())`,
+        [userId, hmacHex('reset', rawToken)],
+      );
+      const app = buildApp();
+
+      // Two concurrent redemptions of one reset token: exactly one applies.
+      const responses = await Promise.all([
+        request(app)
+          .post('/api/v1/auth/reset-password')
+          .send({ token: rawToken, newPassword: 'RaceHorse123!' }),
+        request(app)
+          .post('/api/v1/auth/reset-password')
+          .send({ token: rawToken, newPassword: 'RaceHorse456!' }),
+      ]);
+      expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+      expect(responses.find((response) => response.status !== 200)?.status).toBe(400);
+    });
+  });
+
+  it('concurrent_resend_serializes_outbox_versions', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'resendrake@example.com';
+      const app = buildApp();
+      // A known-unverified account: registration leaves one live VERIFY_EMAIL
+      // challenge at version 1, which the resends below must extend to version 2.
+      const registered = await request(app)
+        .post('/api/v1/auth/register')
+        .set('Origin', APP_ORIGIN)
+        .send({ displayName: 'Resend Race', email, password: 'CorrectHorse1!' });
+      expect(registered.status).toBe(202);
+      const userRow = await migrationPool.query<{ id: string }>(
+        'SELECT id FROM users WHERE email=$1',
+        [email],
+      );
+      const userId = userRow.rows[0]?.id as string;
+      // Clear the registration cooldown so the next window is actually due.
+      await migrationPool.query(
+        `UPDATE auth_challenges SET resend_after = now() - interval '1 minute'
+         WHERE user_id=$1 AND purpose='VERIFY_EMAIL' AND consumed_at IS NULL`,
+        [userId],
+      );
+
+      const responses = await Promise.all(
+        Array.from({ length: 4 }, () =>
+          request(app).post('/api/v1/auth/resend-otp').set('Origin', APP_ORIGIN).send({ email }),
+        ),
+      );
+      for (const response of responses) expect(response.status).toBe(202);
+      // Serialized resends emit exactly one new job with a unique version, and
+      // every concurrent caller still receives the generic acknowledgement.
+      const rows = await migrationPool.query<{ aggregate_version: number }>(
+        `SELECT aggregate_version FROM outbox_events
+         WHERE aggregate_id=$1 AND event_type='AUTH_VERIFY_EMAIL'
+         ORDER BY aggregate_version`,
+        [userId],
+      );
+      expect(rows.rows.map((row) => Number(row.aggregate_version))).toEqual([1, 2]);
     });
   });
 });

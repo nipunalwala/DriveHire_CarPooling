@@ -14,14 +14,7 @@ import type { Page, PageMeta, SessionDto, UserDto } from '@drivehire/contracts';
 import type { PrismaClient } from '../../generated/client/client.js';
 import type { Config } from '../../config/env.js';
 import { authEmailAad, encryptOutboxSecret } from './outbox-crypto.js';
-import {
-  badRequest,
-  conflict,
-  forbidden,
-  notFound,
-  tooManyRequests,
-  unauthenticated,
-} from '../../errors.js';
+import { badRequest, conflict, forbidden, notFound, unauthenticated } from '../../errors.js';
 
 export type Role = 'PASSENGER' | 'DRIVER' | 'ADMIN';
 export type CurrentAccount = { userId: string; roles: Role[]; sessionId: string };
@@ -164,16 +157,17 @@ export function createAccountsService({
   }
 
   async function createSession(
+    db: Db,
     userId: string,
     when: Date,
   ): Promise<{ sessionId: string; refreshToken: string }> {
     const absoluteExpiresAt = new Date(when.getTime() + FAMILY_TTL_DAYS * 24 * 3600 * 1000);
-    const session = await prisma.refreshSession.create({
+    const session = await db.refreshSession.create({
       data: { userId, absoluteExpiresAt },
       select: { id: true },
     });
     const refreshToken = newOpaqueToken();
-    await prisma.refreshToken.create({
+    await db.refreshToken.create({
       data: {
         sessionId: session.id,
         tokenHash: hmacHex('refresh', refreshToken),
@@ -343,80 +337,95 @@ export function createAccountsService({
 
     async verifyEmail(input) {
       const payload = parseOrBadRequest(OtpInputSchema, input);
-      const challenge = (
-        await prisma.$queryRaw<
-          Array<{ id: string; userId: string; attempts: number; secretHash: string }>
-        >`
-          SELECT c.id, c.user_id AS "userId", c.attempts, c.secret_hash AS "secretHash"
-          FROM auth_challenges c
-          JOIN users u ON u.id = c.user_id
-          WHERE u.email = ${normalizeEmail(payload.email)}
-            AND c.purpose = 'VERIFY_EMAIL'
-            AND c.consumed_at IS NULL
-            AND c.invalidated_at IS NULL
-            AND c.expires_at > now()
-          ORDER BY c.created_at DESC
-          LIMIT 1`
-      )?.at(0);
-      if (!challenge) throw badRequest('Verification code is invalid or expired');
+      const email = normalizeEmail(payload.email);
       const expected = Buffer.from(hmacHex('otp', payload.code), 'hex');
-      const stored = Buffer.from(challenge.secretHash, 'hex');
-      if (stored.length !== expected.length || !timingSafeEqual(stored, expected)) {
-        // Atomic conditional attempt bump: an exhausted row can never pass.
-        // Exactly five wrong attempts are allowed; the sixth is a conflict.
-        const bumped = await prisma.authChallenge.updateMany({
-          where: { id: challenge.id, attempts: { lt: OTP_MAX_ATTEMPTS } },
-          data: { attempts: { increment: 1 } },
-        });
-        if (bumped.count === 0) {
-          throw conflict('Too many failed attempts. Request a new code.');
+      // Lock the live challenge row so a valid code can be redeemed exactly once
+      // even when several requests arrive concurrently; the transaction commits
+      // or rolls back the attempt accounting and the single consumption together.
+      const outcome = await prisma.$transaction(async (tx) => {
+        const challenge = (
+          await tx.$queryRaw<
+            Array<{ id: string; userId: string; attempts: number; secretHash: string }>
+          >`
+            SELECT c.id, c.user_id AS "userId", c.attempts, c.secret_hash AS "secretHash"
+            FROM auth_challenges c
+            JOIN users u ON u.id = c.user_id
+            WHERE u.email = ${email}
+              AND c.purpose = 'VERIFY_EMAIL'
+              AND c.consumed_at IS NULL
+              AND c.invalidated_at IS NULL
+              AND c.expires_at > now()
+            ORDER BY c.created_at DESC
+            LIMIT 1
+            FOR UPDATE OF c`
+        )?.at(0);
+        if (!challenge) return 'INVALID' as const;
+        const stored = Buffer.from(challenge.secretHash, 'hex');
+        const matches = stored.length === expected.length && timingSafeEqual(stored, expected);
+        if (!matches) {
+          // Exactly five wrong attempts are allowed; the sixth is a conflict.
+          const bumped = await tx.authChallenge.updateMany({
+            where: { id: challenge.id, attempts: { lt: OTP_MAX_ATTEMPTS } },
+            data: { attempts: { increment: 1 } },
+          });
+          return bumped.count === 0 ? ('CONFLICT' as const) : ('INVALID' as const);
         }
-        throw badRequest('Verification code is invalid or expired');
-      }
-      if (challenge.attempts >= OTP_MAX_ATTEMPTS) {
-        // An exhausted challenge is dead for every code, including the original.
-        await prisma.authChallenge.update({
-          where: { id: challenge.id },
-          data: { invalidatedAt: new Date() },
+        if (challenge.attempts >= OTP_MAX_ATTEMPTS) {
+          // An exhausted challenge is dead for every code, including the original.
+          await tx.authChallenge.update({
+            where: { id: challenge.id },
+            data: { invalidatedAt: new Date() },
+          });
+          return 'INVALID' as const;
+        }
+        // Conditional consume decides the single winner under concurrency.
+        const consumed = await tx.authChallenge.updateMany({
+          where: { id: challenge.id, consumedAt: null, invalidatedAt: null },
+          data: { consumedAt: new Date() },
         });
-        throw badRequest('Verification code is invalid or expired');
-      }
-      await prisma.$transaction([
-        prisma.user.update({
+        if (consumed.count === 0) return 'INVALID' as const;
+        await tx.user.update({
           where: { id: challenge.userId },
           data: { emailVerifiedAt: new Date() },
-        }),
-        prisma.authChallenge.update({
-          where: { id: challenge.id },
-          data: { consumedAt: new Date() },
-        }),
-      ]);
+        });
+        return 'OK' as const;
+      });
+      if (outcome === 'CONFLICT') {
+        throw conflict('Too many failed attempts. Request a new code.');
+      }
+      if (outcome === 'INVALID') throw badRequest('Verification code is invalid or expired');
       return { acknowledged: true };
     },
 
     async resendOtp(input) {
       const payload = parseOrBadRequest(EmailInputSchema, input);
       const email = normalizeEmail(payload.email);
-      const challenge = (
-        await prisma.$queryRaw<Array<{ id: string; userId: string; resendAfter: Date }>>`
-          SELECT c.id, c.user_id AS "userId", c.resend_after AS "resendAfter"
-          FROM auth_challenges c
-          JOIN users u ON u.id = c.user_id
-          WHERE u.email = ${email}
-            AND c.purpose = 'VERIFY_EMAIL'
-            AND c.consumed_at IS NULL
-            AND c.invalidated_at IS NULL
-          ORDER BY c.created_at DESC
-          LIMIT 1`
-      )?.at(0);
-      // Unknown or consumed challenges answer with a generic acknowledgement.
-      if (!challenge) return { acknowledged: true };
-      if (challenge.resendAfter.getTime() > Date.now()) {
-        throw tooManyRequests('Please wait before requesting another code');
-      }
-      const otp = sixDigitOtp();
       const now = Date.now();
       await prisma.$transaction(async (tx) => {
+        // The account row lock serializes concurrent resends so the per-user
+        // outbox aggregate version cannot collide (count+1 under a stable lock).
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM users WHERE email = ${email} FOR UPDATE`;
+        const userId = locked[0]?.id;
+        // Unknown accounts answer with the same generic acknowledgement.
+        if (!userId) return;
+        const challenge = (
+          await tx.$queryRaw<Array<{ id: string; resendAfter: Date }>>`
+            SELECT c.id, c.resend_after AS "resendAfter"
+            FROM auth_challenges c
+            WHERE c.user_id = ${userId}
+              AND c.purpose = 'VERIFY_EMAIL'
+              AND c.consumed_at IS NULL
+              AND c.invalidated_at IS NULL
+            ORDER BY c.created_at DESC
+            LIMIT 1`
+        )?.at(0);
+        if (!challenge) return;
+        // Within the per-address cooldown we silently skip the resend but still
+        // answer generically, so a known address cannot be distinguished from
+        // an unknown one by a 429.
+        if (challenge.resendAfter.getTime() > now) return;
+        const otp = sixDigitOtp();
         await tx.authChallenge.update({
           where: { id: challenge.id },
           data: {
@@ -429,7 +438,7 @@ export function createAccountsService({
         const priorVersions = await tx.outboxEvent.count({
           where: {
             aggregateType: 'user',
-            aggregateId: challenge.userId,
+            aggregateId: userId,
             eventType: 'AUTH_VERIFY_EMAIL',
           },
         });
@@ -437,12 +446,12 @@ export function createAccountsService({
           data: {
             eventType: 'AUTH_VERIFY_EMAIL',
             aggregateType: 'user',
-            aggregateId: challenge.userId,
+            aggregateId: userId,
             aggregateVersion: priorVersions + 1,
             payload: { challengeId: challenge.id },
             sensitivePayloadCiphertext: encryptOutboxSecret(
               config.authOutboxKey,
-              authEmailAad('AUTH_VERIFY_EMAIL', challenge.userId),
+              authEmailAad('AUTH_VERIFY_EMAIL', userId),
               { recipient: email, secret: otp },
             ),
             occurredAt: new Date(now),
@@ -468,7 +477,25 @@ export function createAccountsService({
       if (user.emailVerifiedAt === null) {
         throw forbidden('Verify your email before signing in');
       }
-      const session = await createSession(user.id, new Date());
+      // The session must not outlive a credential change that races this login.
+      // Lock the account row and re-check the hash/version it was verified
+      // against inside the same transaction, so a concurrent reset (which takes
+      // the same lock) either rejects this login or revokes the session it emits.
+      const session = await prisma.$transaction(async (tx) => {
+        const locked = await tx.$queryRaw<Array<{ passwordHash: string; tokenVersion: number }>>`
+          SELECT password_hash AS "passwordHash", token_version AS "tokenVersion"
+          FROM users WHERE id = ${user.id} FOR UPDATE`;
+        const current = locked[0];
+        if (
+          !current ||
+          current.passwordHash !== user.passwordHash ||
+          current.tokenVersion !== user.tokenVersion
+        ) {
+          return null;
+        }
+        return createSession(tx, user.id, new Date());
+      });
+      if (!session) throw unauthenticated('Invalid email or password');
       return sessionResponse(user, session.sessionId, session.refreshToken);
     },
 
@@ -500,6 +527,14 @@ export function createAccountsService({
           await revokeFamily(tx, row.sessionId, 'REPLAY');
           return null;
         }
+        const user = await tx.user.findUniqueOrThrow({
+          where: { id: row.session.userId },
+        });
+        // A suspended or non-active account must not mint fresh credentials.
+        if (user.status !== 'ACTIVE') {
+          await revokeFamily(tx, row.sessionId, 'SUSPENDED');
+          return null;
+        }
         const successor = newOpaqueToken();
         await tx.refreshToken.create({
           data: {
@@ -508,9 +543,6 @@ export function createAccountsService({
             parentTokenId: row.id,
             expiresAt: row.session.absoluteExpiresAt,
           },
-        });
-        const user = await tx.user.findUniqueOrThrow({
-          where: { id: row.session.userId },
         });
         return { user, sessionId: row.sessionId, refreshToken: successor };
       });
@@ -588,15 +620,20 @@ export function createAccountsService({
     async forgotPassword(input) {
       const payload = parseOrBadRequest(EmailInputSchema, input);
       const email = normalizeEmail(payload.email);
-      const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
-      if (!user) return { acknowledged: true }; // Generic; no enumeration.
       const rawToken = newOpaqueToken();
       const now = Date.now();
       await prisma.$transaction(async (tx) => {
+        // Lock the account row so concurrent requests serialize: the previous
+        // reset challenge is invalidated and the outbox aggregate version is
+        // counted under a stable lock instead of a racy max+1.
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM users WHERE email = ${email} FOR UPDATE`;
+        const userId = locked[0]?.id;
+        if (!userId) return; // Generic; no enumeration.
         // A newer request invalidates the prior reset challenge.
         await tx.authChallenge.updateMany({
           where: {
-            userId: user.id,
+            userId,
             purpose: 'RESET_PASSWORD',
             consumedAt: null,
             invalidatedAt: null,
@@ -605,7 +642,7 @@ export function createAccountsService({
         });
         const challenge = await tx.authChallenge.create({
           data: {
-            userId: user.id,
+            userId,
             purpose: 'RESET_PASSWORD',
             secretHash: hmacHex('reset', rawToken),
             expiresAt: new Date(now + RESET_TTL_MINUTES * 60_000),
@@ -617,7 +654,7 @@ export function createAccountsService({
         const priorVersions = await tx.outboxEvent.count({
           where: {
             aggregateType: 'user',
-            aggregateId: user.id,
+            aggregateId: userId,
             eventType: 'AUTH_RESET_PASSWORD',
           },
         });
@@ -625,12 +662,12 @@ export function createAccountsService({
           data: {
             eventType: 'AUTH_RESET_PASSWORD',
             aggregateType: 'user',
-            aggregateId: user.id,
+            aggregateId: userId,
             aggregateVersion: priorVersions + 1,
             payload: { challengeId: challenge.id },
             sensitivePayloadCiphertext: encryptOutboxSecret(
               config.authOutboxKey,
-              authEmailAad('AUTH_RESET_PASSWORD', user.id),
+              authEmailAad('AUTH_RESET_PASSWORD', userId),
               { recipient: email, secret: rawToken },
             ),
             occurredAt: new Date(now),
@@ -665,6 +702,9 @@ export function createAccountsService({
           data: { consumedAt: new Date() },
         });
         if (consumed.count === 0) throw badRequest('Reset link is invalid or expired');
+        // Take the same account-row lock login uses so a stale-password login
+        // cannot commit a session after this reset and then refresh.
+        await tx.$queryRaw`SELECT id FROM users WHERE id = ${challenge.userId} FOR UPDATE`;
         await tx.user.update({
           where: { id: challenge.userId },
           data: { passwordHash: passwordHashed },
