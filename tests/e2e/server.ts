@@ -11,13 +11,19 @@ import { createLogger } from '../../apps/api/src/config/logger.js';
 import { createApp } from '../../apps/api/src/app.js';
 import { createAuthEmailDelivery } from '../../apps/api/src/modules/accounts/email-jobs.js';
 import { createSmtpMail } from '../../apps/api/src/adapters/smtp-mail.js';
+import { createPrivateStorage } from '../../apps/api/src/adapters/private-storage.js';
+import { createClamAvScan } from '../../apps/api/src/adapters/clamav-scan.js';
 
 loadEnvFile('.env');
 // Dedicated E2E Compose has its own ports and data. Never reuse the backend
-// integration target or accept a caller-supplied development database.
+// integration target or accept a caller-supplied development database. Ports
+// are env-overridable for isolated runs; the defaults stay the committed E2E
+// Compose ports so CI and local browser runs are unchanged.
+const E2E_DATABASE_PORT = process.env.E2E_DATABASE_PORT ?? '55434';
+const E2E_SMTP_PORT = process.env.E2E_SMTP_PORT ?? '11026';
 for (const key of ['TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) {
   const url = new URL(requireTestDatabaseUrl(process.env[key]));
-  url.port = '55434';
+  url.port = E2E_DATABASE_PORT;
   process.env[key] = url.toString();
 }
 await withTestDatabase(async () => {
@@ -31,8 +37,11 @@ await withTestDatabase(async () => {
     AUTH_JWT_SECRET: randomBytes(32).toString('base64url'),
     AUTH_OUTBOX_KEY: randomBytes(32).toString('base64url'),
     SMTP_HOST: '127.0.0.1',
-    SMTP_PORT: '11026',
+    SMTP_PORT: E2E_SMTP_PORT,
     SMTP_TLS: 'none',
+    SCAN_HOST: '127.0.0.1',
+    SCAN_PORT: '13311',
+    STORAGE_PRIVATE_ROOT: resolve('test-results', 'private-e2e-evidence'),
   });
   const prisma = createPrisma(config.databaseUrl);
   const logger = createLogger('error');
@@ -40,6 +49,11 @@ await withTestDatabase(async () => {
     config,
     logger,
     accounts: { prisma },
+    providers: {
+      storage: createPrivateStorage({ root: config.storagePrivateRoot }),
+      scanner: createClamAvScan(config.scan),
+    },
+    admin: { prisma },
     readiness: async () => ({ database: true, schema: true, worker: true }),
   });
   const server = app.listen(4002, '127.0.0.1');

@@ -66,3 +66,19 @@ it('returns a recoverable message for a network failure', async () => {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
   await expect(new ApiClient().request('/users/me')).rejects.toThrow('Check your connection');
 });
+
+it('preserves pagination metadata for server-backed lists', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        json({ success: true, data: [{ id: 'row' }], meta: { page: 2, pageSize: 20, total: 25 } }),
+      ),
+  );
+  expect(await new ApiClient().requestPage('/users/me/vehicles?page=2')).toEqual({
+    success: true,
+    data: [{ id: 'row' }],
+    meta: { page: 2, pageSize: 20, total: 25 },
+  });
+});

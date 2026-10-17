@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { ProfileInputSchema, UserSchema } from '@drivehire/contracts';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthProvider.js';
@@ -109,6 +110,11 @@ export function ProfilePage() {
             <Button variant="secondary" onClick={() => void enableDriver()} busy={busy}>
               Enable driver capability
             </Button>
+          )}
+          {user.roles.includes('DRIVER') && (
+            <p>
+              <Link to="/driver/availability">Manage your driving schedule</Link>
+            </p>
           )}
         </section>
         <section className="profile-section">

@@ -1,3 +1,5 @@
+import { PageMetaSchema, type Page } from '@drivehire/contracts';
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -20,7 +22,24 @@ export class ApiClient {
     this.refreshHandler = handler;
   }
 
-  async request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    return (await this.envelope<T>(path, init)).data as T;
+  }
+
+  async requestPage<T>(path: string, init: RequestInit = {}): Promise<Page<T>> {
+    const result = await this.envelope<T[]>(path, init);
+    const meta = PageMetaSchema.safeParse(result.meta);
+    if (!Array.isArray(result.data) || !meta.success) {
+      throw new ApiError('The list response was incomplete. Please reload and try again.');
+    }
+    return { success: true, data: result.data, meta: meta.data };
+  }
+
+  private async envelope<T>(
+    path: string,
+    init: RequestInit = {},
+    retry = true,
+  ): Promise<{ data?: T; meta?: unknown }> {
     if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) {
       throw new ApiError('Only application API paths are allowed.');
     }
@@ -36,11 +55,12 @@ export class ApiClient {
       throw new ApiError('Check your connection and try again. Your changes have not been saved.');
     }
     if (response.status === 401 && !path.startsWith('/auth/') && retry && this.refreshHandler) {
-      if (await this.refreshHandler()) return this.request<T>(path, init, false);
+      if (await this.refreshHandler()) return this.envelope<T>(path, init, false);
     }
     const envelope = (await response.json().catch(() => null)) as {
       success?: boolean;
       data?: T;
+      meta?: unknown;
       error?: { message?: string; code?: string };
     } | null;
     if (!response.ok || envelope?.success !== true) {
@@ -50,7 +70,7 @@ export class ApiClient {
         envelope?.error?.code,
       );
     }
-    return envelope.data as T;
+    return envelope;
   }
 }
 

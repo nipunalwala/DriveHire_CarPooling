@@ -1,5 +1,22 @@
 import { test, expect, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { loadEnvFile } from 'node:process';
+import { Pool } from 'pg';
+import { requireTestDatabaseUrl } from '../../apps/api/src/runtime/test-database.js';
+
+test.beforeEach(async () => {
+  // Independent browser cases share one loopback IP. Reset only the isolated
+  // E2E database's counters; production rate limits remain fully enabled.
+  loadEnvFile('.env');
+  const target = new URL(requireTestDatabaseUrl(process.env.TEST_MIGRATION_DATABASE_URL));
+  target.port = '55434';
+  const pool = new Pool({ connectionString: requireTestDatabaseUrl(target.toString()), max: 1 });
+  try {
+    await pool.query('TRUNCATE rate_limit_buckets');
+  } finally {
+    await pool.end();
+  }
+});
 
 async function messageFor(email: string, subject: string) {
   let text = '';
@@ -66,6 +83,37 @@ test('protected_navigation_redirects_and_returns', async ({ page }) => {
   await expect(page).toHaveURL(/login\?next=%2Fprofile/);
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
 });
+
+test('driver_schedule_persists_and_removes_windows', async ({ page }) => {
+  const email = await registerAndVerify(page);
+  await login(page, email);
+  await page.goto('/driver/availability');
+  await expect(page.getByRole('heading', { name: 'Driver access required' })).toBeVisible();
+  await page.getByRole('link', { name: 'Go to your profile' }).click();
+  await page.getByRole('button', { name: 'Enable driver capability' }).click();
+  await page.getByRole('link', { name: 'Manage your driving schedule' }).click();
+  await expect(page.getByRole('heading', { name: 'Your driving schedule' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No time windows yet' })).toBeVisible();
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  await page.getByLabel('Starts', { exact: true }).fill(`${tomorrow}T10:00`);
+  await page.getByLabel('Ends', { exact: true }).fill(`${tomorrow}T11:00`);
+  await page.getByLabel('Keep this time free').check();
+  await page.getByRole('button', { name: 'Save time window' }).click();
+  await expect(
+    page.getByText('Your schedule window has been saved.', { exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button', { name: /Remove window starting/ })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: `artifacts/schedule-${test.info().project.name}.png`,
+    fullPage: true,
+  });
+  await page.getByRole('button', { name: /Remove window starting/ }).click();
+  await expect(page.getByRole('heading', { name: 'No time windows yet' })).toBeVisible();
+});
 test('invalid_fields_keyboard_error_focus', async ({ page }) => {
   await page.goto('/register');
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
@@ -106,4 +154,25 @@ test('reset_browser_revokes_old_session', async ({ page, context }) => {
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   await login(other, email, 'ChangedHorseBrowser2!');
+});
+
+test('cross_tab_refresh_preserves_session_and_logout_propagates', async ({ page, context }) => {
+  const email = await registerAndVerify(page);
+  await login(page, email);
+  const second = await context.newPage();
+  await Promise.all([page.reload(), second.goto('/profile')]);
+  for (const tab of [page, second]) {
+    await expect(tab.getByRole('heading', { name: 'Your profile', exact: true })).toBeVisible();
+    expect(await tab.evaluate(() => localStorage.getItem('accessToken'))).toBeNull();
+  }
+  await second.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+});
+
+test('protected_destination_returns_after_successful_login', async ({ page }) => {
+  const email = await registerAndVerify(page);
+  await page.goto('/profile');
+  await expect(page).toHaveURL(/login\?next=%2Fprofile/);
+  await login(page, email);
+  await expect(page).toHaveURL(/\/profile$/);
 });

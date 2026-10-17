@@ -8,6 +8,7 @@ import { VerifyEmailPage } from './features/auth/VerifyEmailPage.js';
 import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage.js';
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage.js';
 import { ProfilePage } from './features/profile/ProfilePage.js';
+import { DriverAvailabilityPage } from './features/providers/DriverAvailabilityPage.js';
 
 function Shell() {
   const { user } = useAuth();
@@ -81,6 +82,14 @@ function Shell() {
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route
+            path="/driver/availability"
+            element={
+              <ProtectedRoute>
+                <DriverAvailabilityPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/profile"
             element={
