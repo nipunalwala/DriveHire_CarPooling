@@ -140,3 +140,95 @@ the only Task1 commit; the earlier `wip:` checkpoint `e70c10b` remains in histor
 Only Milestone03 Task1 files changed. No push, merge or deploy was performed.
 Task2 (real auth email + own profiles), Task3 (screens/E2E), the whole-branch
 review and the final `03-accounts.md` archive remain outstanding.
+
+## Task2 implementation and evidence — 2026-10-18
+
+Scope: the owning plan step "real authentication email + own profiles" — a real
+SMTP transport, a durable encrypted outbox drained by the worker, and
+self-service profile + DRIVER self-enable routes. Milestones01/02/03-Task1
+preserved and not redone. Landed as `c0efd12` (`feat: durable authentication email
+and own profiles`) on branch `opencode/accounts-auth`, authored by the configured
+Nipun Alwala <nipunalwala18@gmail.com> identity.
+
+### Delivered
+
+- `apps/api/src/modules/accounts/outbox-crypto.ts` (new): AES-256-GCM
+  `encryptOutboxSecret`/`decryptOutboxSecret` with `authEmailAad` binding a job to
+  its recipient/type so ciphertext cannot be replayed across rows.
+- `apps/api/src/adapters/smtp-mail.ts` (new): dependency-free SMTP client over
+  `node:net`/`node:tls` (no new package; pins/lockfile untouched). Supports
+  `SMTP_TLS=none|starttls|implicit`, AUTH PLAIN, dot-stuffing and bounded
+  timeouts; `SmtpError` surfaces a non-secret code/path.
+- `apps/api/src/modules/accounts/email-jobs.ts` (new): real durable delivery
+  worker. `deliverAuthEmails` claims pending rows with
+  `FOR UPDATE SKIP LOCKED`, decrypts outside the claim transaction, sends over
+  SMTP and only marks `processed_at` after the transport accepts. Bounded
+  exponential backoff (`MAX_ATTEMPTS=5`) plus dead-letter; at-least-once
+  semantics; logs never include the raw code/token.
+- `apps/api/src/modules/accounts/profile.ts` (new): `getProfile`/`updateProfile`/
+  `enableDriver` (DRIVER self-grant only).
+- `apps/api/src/modules/accounts/service.ts`: auth emails now write an encrypted
+  outbox row atomically with the challenge/session mutation (`challengeId` inside
+  the AEAD payload); direct `mail.send` calls removed so the worker is the single
+  delivery path. `resetPassword` consumes the token and revokes sessions in one
+  transaction. Refresh uses a conditional consume and, on a concurrent replay,
+  revokes the whole family (revoked+consumed).
+- `apps/api/src/modules/accounts/routes.ts`: added `GET /users/me`,
+  `PATCH /users/me`, `POST /users/me/roles` (DRIVER only; ADMIN/OWNER rejected);
+  dependencies reduced to `{ prisma }`.
+- `apps/api/src/app.ts`, `server.ts`, `worker.ts`: composition wired —
+  `AccountsDependencies = { prisma }`; the server constructs Prisma and
+  disconnects it on shutdown; the worker composes `createSmtpMail` +
+  `createAuthEmailDelivery` and drains on each heartbeat tick.
+- `apps/api/src/config/env.ts`, `.env.example`: added `SMTP_TLS` and
+  `AUTH_OUTBOX_KEY` (required in staging/production; ephemeral in test).
+
+### Observed RED -> GREEN
+
+- `apps/api/src/modules/accounts/email.integration.test.ts` (new) failed 6/7
+  before this work (real behavior: no Mailpit message, jobs not drained, delivery
+  row drained by the removed direct send). After implementation the focused suite
+  is 7/7 passed. Named regressions now covered: `challenge_and_email_job_rollback_together`,
+  `smtp_failure_not_marked_delivered`, `lease_retry_after_crash`,
+  `mailpit_contains_working_expiring_one_use_link`, `raw_secret_not_in_payload_or_logs`,
+  `profile_foreign404`, `no_OWNER_or_ADMIN_self_grant`.
+- `auth.integration.test.ts`: added `concurrent_refresh_replay_revokes_family`
+  (replays the same refresh cookie concurrently; at most one successor is minted
+  and the family is revoked) and switched Task1 OTP reads to drain the real
+  outbox. Suite is 8/8 passed.
+- Full integration: `npm run test:integration` → 8 files, 42 tests passed, exit 0.
+- `npm test` → 10 unit files / 34 tests + 1 contract test passed, exit 0.
+- `npm run typecheck`, `npm run lint` (boundaries verified), `npm run build`
+  (contracts/api/web), `npm run docs:check` (21 specs, 8 milestones, 26 FRs, 70
+  API operations, 26 screens; OpenAPI validates) → all exit 0.
+
+### format:check resolution
+
+Added `"endOfLine": "auto"` to `.prettierrc.json` (repository index stays LF; the
+Windows CRLF working tree no longer false-fails). `npm run format:check` now
+reports "All matched files use Prettier code style!" — the previously
+environment-blocked check now passes without any mass rewrite. Only the three
+Task2-owned files with true content issues were normalised with `prettier --write`.
+
+### Frontend handoff to Codex (Task3)
+
+Backend/contracts are ready for the screens + first browser E2E. Codex owns all
+Task3 UI/UX on the frontend; OpenCode will not implement or redesign screens.
+Handoff facts:
+
+- Profile routes: `GET /users/me` (200 self `UserDto`), `PATCH /users/me`
+  (optional `displayName`/`phone`, `minProperties: 1`), `POST /users/me/roles`
+  accepting `{ role: 'DRIVER' }` only (ADMIN/OWNER → 403; unknown/missing → 400).
+- Verification uses the 6-digit OTP; the Mailpit message body contains a working
+  expiring one-use link/text. Local Mailpit UI: `http://127.0.0.1:18025`.
+- Dev cross-process runs need a shared `AUTH_OUTBOX_KEY` so the API writer and
+  worker decrypt the same outbox rows.
+- Uncovered transport modes: only `SMTP_TLS=none` is exercised by Mailpit;
+  `starttls`/`implicit` are implemented but not yet integration-tested.
+
+### Scope confirmation
+
+Only Milestone03 Task2 files changed. No push, merge or deploy was performed.
+Task3 (screens/E2E), the whole-branch review and the final `03-accounts.md`
+archive remain outstanding; this milestone is not declared complete until the
+Codex frontend and independent review land.
