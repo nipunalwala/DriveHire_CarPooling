@@ -129,6 +129,12 @@ real behavior assertion, not an unavailable suite.
   three that had true content issues (service, auth test, contracts/auth).
   This is recorded as environment-blocked, not a passing result.
 
+### Recorded commit
+
+Task1 landed as `2c618ae` (`feat: account contracts and current authentication`),
+authored by the configured Nipun Alwala <nipunalwala18@gmail.com> identity. It is
+the only Task1 commit; the earlier `wip:` checkpoint `e70c10b` remains in history.
+
 ### Scope confirmation
 
 Only Milestone03 Task1 files changed. No push, merge or deploy was performed.
