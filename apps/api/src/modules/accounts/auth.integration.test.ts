@@ -4,6 +4,7 @@ import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { MailAdapter } from '../../ports.js';
 import { createApp } from '../../app.js';
+import { createAuthEmailDelivery } from './email-jobs.js';
 import { createLogger } from '../../config/logger.js';
 import { parseEnv } from '../../config/env.js';
 import { createPrisma } from '../../runtime/prisma.js';
@@ -72,6 +73,12 @@ const config = parseEnv({
   AUTH_JWT_SECRET: JWT_SECRET,
 });
 
+const delivery = createAuthEmailDelivery({ prisma, config, mail });
+/** Drain the durable outbox through the real worker (recording transport). */
+async function flushEmail(): Promise<void> {
+  await delivery.deliverAuthEmails(new AbortController().signal);
+}
+
 function buildApp(loggerLines?: string[]) {
   const logger = loggerLines
     ? createLogger('info', {
@@ -84,7 +91,7 @@ function buildApp(loggerLines?: string[]) {
     config,
     logger,
     readiness: async () => ({ database: true, schema: true, worker: true }),
-    accounts: { prisma, mail },
+    accounts: { prisma },
   });
 }
 
@@ -101,13 +108,12 @@ async function registerAndVerify(email: string): Promise<void> {
     .set('Origin', APP_ORIGIN)
     .send({ displayName: 'Test Person', email, password: 'CorrectHorse1!' });
   expect(registered.status).toBe(202);
+  await flushEmail();
   const sent = mail.seen.at(-1);
   if (!sent) throw new Error('Registration did not queue verification mail');
   const code = /code is ([0-9]{6})/.exec(sent.text)?.[1];
   if (!code) throw new Error('Verification mail did not contain a six-digit code');
-  const verified = await request(app)
-    .post('/api/v1/auth/verify-email')
-    .send({ email, code });
+  const verified = await request(app).post('/api/v1/auth/verify-email').send({ email, code });
   expect(verified.status).toBe(200);
 }
 
@@ -183,6 +189,37 @@ describe('Milestone03 Task1: account contracts and current authentication', () =
     });
   });
 
+  it('concurrent_refresh_replay_revokes_family', async () => {
+    await withTestDatabase(async ({ runtimePool }) => {
+      const email = 'concurrent@example.com';
+      await registerAndVerify(email);
+      const app = buildApp();
+      const account = await login(email);
+      const cookie = `${REFRESH_COOKIE}=${account.refreshToken}`;
+      const responses = await Promise.all([
+        request(app).post('/api/v1/auth/refresh').set('Origin', APP_ORIGIN).set('Cookie', cookie),
+        request(app).post('/api/v1/auth/refresh').set('Origin', APP_ORIGIN).set('Cookie', cookie),
+      ]);
+      // A concurrent replay must never mint two live successors.
+      const succeeded = responses.filter((response) => response.status === 200);
+      expect(succeeded.length).toBeLessThanOrEqual(1);
+      for (const response of succeeded) {
+        const use = await request(app)
+          .get('/api/v1/auth/sessions')
+          .set('Authorization', `Bearer ${response.body.data.accessToken}`);
+        expect(use.status).toBe(401);
+      }
+      const family = await runtimePool.query<{ revoked: string | null }>(
+        `SELECT t.revoked_at AS revoked FROM refresh_tokens t
+         WHERE t.session_id = (SELECT id FROM refresh_sessions WHERE user_id =
+           (SELECT id FROM users WHERE email=$1) ORDER BY created_at DESC LIMIT 1)`,
+        [email],
+      );
+      expect(family.rows.length).toBeGreaterThanOrEqual(1);
+      for (const token of family.rows) expect(token.revoked).not.toBeNull();
+    });
+  });
+
   it('suspended_jwt_fails_next_request', async () => {
     await withTestDatabase(async ({ runtimePool }) => {
       const email = 'suspended@example.com';
@@ -210,6 +247,7 @@ describe('Milestone03 Task1: account contracts and current authentication', () =
         .post('/api/v1/auth/register')
         .send({ displayName: 'Attempts', email, password: 'CorrectHorse1!' });
       expect(registered.status).toBe(202);
+      await flushEmail();
       const sent = mail.seen.at(-1);
       const code = /code is ([0-9]{6})/.exec(sent?.text ?? '')?.[1];
       if (!code) throw new Error('Verification mail missing');
@@ -312,14 +350,12 @@ describe('Milestone03 Task1: account contracts and current authentication', () =
     await withTestDatabase(async ({ runtimePool }) => {
       const email = 'grants@example.com';
       const app = buildApp();
-      const bad = await request(app)
-        .post('/api/v1/auth/register')
-        .send({
-          displayName: 'Grants',
-          email,
-          password: 'CorrectHorse1!',
-          role: 'ADMIN',
-        });
+      const bad = await request(app).post('/api/v1/auth/register').send({
+        displayName: 'Grants',
+        email,
+        password: 'CorrectHorse1!',
+        role: 'ADMIN',
+      });
       expect(bad.status).toBe(400);
       await registerAndVerify(email);
       const account = await login(email);

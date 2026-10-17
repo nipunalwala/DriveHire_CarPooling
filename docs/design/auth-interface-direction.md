@@ -1,0 +1,11 @@
+# Authentication interface direction
+
+Milestone03 Task3, 2026-10-18. Execute the existing approved accounts prompt and product scope under the owner's standing authorization to continue without routine phase checkpoints. Codex owns implementation; OpenCode's backend handoff is recorded in 03-accounts-ledger.md.
+
+The primary task is to create, verify and access an account, recover access and edit an own profile. The interface must explain the next action without inventing inventory, safety guarantees or service statistics. Inherit the foundation's deep teal, warm neutral background and system typography. Use a restrained wordmark, a compact shared header, generous form spacing and a quiet secondary service explanation on wide screens. On mobile, prioritize the form and keep every control usable at320px. No decorative raster assets are required for authentication; original service imagery is delivered in07.
+
+Screens: register, verify-email, login, forgot-password, reset-password and protected profile. Shared controls: Button, Field, StatusBadge, ErrorState and EmptyState with explicit disabled/busy states and accessible labels. Keyboard navigation, visible focus, error summary focus, inline validation and preserved inputs are required. Respect reduced motion. Do not communicate status through color alone.
+
+Authentication uses the API's response envelopes, an in-memory access token and HttpOnly refresh cookie. Never store tokens in localStorage. Restore authentication with coordinated single-flight refresh, including cross-tab locking, and make failed refresh converge to one login transition. Protected navigation preserves the intended destination. Password recovery acknowledges generically. Verification and reset use actual Mailpit-delivered credentials in browser tests, never fabricated successful responses.
+
+Implement real API client and auth context before page integration. Observe failing behavioral tests, then implement and verify. Introduce an executable Playwright runner and isolated test API/web/worker/database lifecycle; unavailable suites are not passes. Verify desktop/mobile layout and keyboard/error states in one batched browser inspection, fix observed defects, then confirm once. Full milestone completion requires independent review after frontend and backend integration.

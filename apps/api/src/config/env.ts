@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 
@@ -24,12 +24,14 @@ const schema = z.object({
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(1025),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
+  SMTP_TLS: z.enum(['none', 'starttls', 'implicit']).default('none'),
   MAIL_FROM: z.email().default('no-reply@drivehire.local'),
   SCAN_HOST: z.string().min(1).default('127.0.0.1'),
   SCAN_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
   STORAGE_PRIVATE_ROOT: z.string().min(1).default('../../private-storage'),
   WORKER_POLL_MS: z.coerce.number().int().min(100).max(30000).default(5000),
   AUTH_JWT_SECRET: z.string().optional(),
+  AUTH_OUTBOX_KEY: z.string().optional(),
 });
 
 export function parseEnv(input: Record<string, string | undefined>) {
@@ -54,6 +56,7 @@ export function parseEnv(input: Record<string, string | undefined>) {
     (corsOrigins.some((value) => !value.startsWith('https://')) ||
       !env.SMTP_USER ||
       !env.SMTP_PASSWORD ||
+      env.SMTP_TLS === 'none' ||
       env.SMTP_HOST === '127.0.0.1' ||
       env.MAIL_FROM.endsWith('.local') ||
       !input.STORAGE_PRIVATE_ROOT ||
@@ -71,9 +74,18 @@ export function parseEnv(input: Record<string, string | undefined>) {
   ) {
     throw new Error('Invalid environment keys: AUTH_JWT_SECRET');
   }
+  if (
+    secure &&
+    (!env.AUTH_OUTBOX_KEY ||
+      env.AUTH_OUTBOX_KEY.length < 32 ||
+      env.AUTH_OUTBOX_KEY.startsWith('replace-locally'))
+  ) {
+    throw new Error('Invalid environment keys: AUTH_OUTBOX_KEY');
+  }
   // Development/test fall back to an ephemeral in-process secret; secure
   // environments above reject anything but an explicit durable secret.
   const authJwtSecret: string = env.AUTH_JWT_SECRET ?? randomBytes(32).toString('base64url');
+  const authOutboxKey: Buffer = outboxKey(env.AUTH_OUTBOX_KEY);
   return Object.freeze({
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
@@ -88,12 +100,29 @@ export function parseEnv(input: Record<string, string | undefined>) {
       port: env.SMTP_PORT,
       user: env.SMTP_USER,
       password: env.SMTP_PASSWORD,
+      tls: env.SMTP_TLS,
       from: env.MAIL_FROM,
     },
     scan: { host: env.SCAN_HOST, port: env.SCAN_PORT },
     storagePrivateRoot: resolve(env.STORAGE_PRIVATE_ROOT),
     workerPollMs: env.WORKER_POLL_MS,
     authJwtSecret,
+    authOutboxKey,
   });
 }
 export type Config = ReturnType<typeof parseEnv>;
+
+/**
+ * Derive the 32-byte AEAD key for the authentication outbox. A 32-byte
+ * base64url/hex secret is decoded directly; any other explicit value is
+ * domain-separated with SHA-256; an absent value yields a process-local random
+ * key (development/test only, never shared across processes).
+ */
+function outboxKey(raw: string | undefined): Buffer {
+  if (!raw) return randomBytes(32);
+  for (const encoding of ['base64url', 'hex'] as const) {
+    const decoded = Buffer.from(raw, encoding);
+    if (decoded.length === 32) return decoded;
+  }
+  return createHash('sha256').update(`drivehire-outbox:${raw}`).digest();
+}
