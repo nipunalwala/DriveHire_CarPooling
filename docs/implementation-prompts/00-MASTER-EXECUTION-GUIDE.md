@@ -1,5 +1,9 @@
 # 00 · Lean master execution guide
 
+## Current owner authorization and agent ownership
+
+Read [persistent agent responsibilities](../planning/agent-responsibilities.md) before executing any milestone. The owner authorized continued execution through all remaining phases without routine approval. Free-model OpenCode implements backend/contracts/tests; GPT-6.1 Sol in Codex implements frontend and UI/UX with Impeccable from03 onward. Record backend-to-frontend handoffs in each milestone ledger. Milestone07 includes actual ImageGen assets, responsive optimization and provenance;08 verifies the integrated result. Historical approval/stop language below does not revoke this renewed authorization. No push, merge or deployment is authorized.
+
 Approved scope: driver hiring and instant-join carpooling. Eight milestones, completed01 plus seven remaining. The owner approved the written lean design2026-10-17; the reconciled detailed plan awaits review. Preserve native Superpowers execution, TDD and one final independent reviewer. Use Impeccable for frontend work and generated project imagery in07. No main merge, push or production launch is implied.
 
 Read the approved design, current overview/business/database/security/lifecycle specifications, active OpenAPI and planning model, previous handoff and owning milestone prompt. The archived24-phase baseline is history, not an instruction to implement deferred modules. Plans are separated by subsystem below; each milestone verifies a working result before later dependencies consume it.

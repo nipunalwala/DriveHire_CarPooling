@@ -1,5 +1,7 @@
 # Generated project image policy
 
+Owner-approved workflow (2026-10-18): GPT-6.1 Sol in Codex uses Impeccable to own placement, composition, visual hierarchy and responsive integration. Codex invokes ImageGen for original raster assets; OpenCode's free backend agent does not substitute stock imagery, fabricated assets or its own UI design. Follow [agent responsibilities](../planning/agent-responsibilities.md). UI foundations begin in03; actual generated service imagery is delivered in07.
+
 The lean release retains original generated editorial imagery. Milestone07 generates two service-concept images (driver hiring and shared journey) after Impeccable placements/crops are defined. Earlier functional screens do not claim generated assets exist. Use the imagegen skill and built-in image generation tool, inspect originals/crops, select optimized responsive variants and commit them under apps/web/public/images/generated/. A tool cache or remote link is not a committed asset.
 
 For each selected asset record exact prompt, tool/date, original source path/name, edits/conversion, output filenames/dimensions/formats, intended page, composition rationale, decorative status or exact alt text and responsive crop. Review contrast, loading dimensions and page performance. Native icons remain code/vector where appropriate. If generation fails, report the failure rather than invent provenance or substitute an unapproved stock source.

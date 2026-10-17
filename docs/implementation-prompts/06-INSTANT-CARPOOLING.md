@@ -1,5 +1,7 @@
 # Milestone06: Instant Carpooling Implementation Plan
 
+Execution ownership: follow [persistent agent responsibilities](../planning/agent-responsibilities.md). OpenCode uses verified free models for backend/contracts/tests; GPT-6.1 Sol in Codex owns frontend/UI/UX with Impeccable. Record frontend handoffs in the milestone ledger. ImageGen assets and provenance belong to07. Continue authorized tasks without routine phase approval; never mark pending frontend work complete.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: use `superpowers:executing-plans` for preserved native execution; use `superpowers:subagent-driven-development` only if the owner chooses delegated execution. Implement task-by-task with RED->GREEN, preserve prior passing suites and one final independent review. This plan needs owner review before implementation.
 
 **Goal:** Deliver owned-vehicle carpools with instant seats and shared physical resource protection.
