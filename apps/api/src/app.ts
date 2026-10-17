@@ -8,7 +8,6 @@ import type { Logger } from 'pino';
 import type { Config } from './config/env.js';
 import { safeErrorMetadata } from './config/logger.js';
 import { HttpError } from './errors.js';
-import type { MailAdapter } from './ports.js';
 import type { PrismaClient } from './generated/client/client.js';
 import { createAccountsRouter } from './modules/accounts/routes.js';
 
@@ -16,7 +15,7 @@ export type ReadinessState = { database: boolean; schema: boolean; worker: boole
 export type ReadinessProbe = () => Promise<ReadinessState>;
 
 /** Optional real account dependencies; absent means only operational routes mount. */
-export type AccountsDependencies = { prisma: PrismaClient; mail: MailAdapter };
+export type AccountsDependencies = { prisma: PrismaClient };
 
 async function isReady(probe: ReadinessProbe): Promise<boolean> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -95,11 +94,7 @@ export function createApp(options: {
   if (options.accounts) {
     app.use(
       '/api/v1',
-      createAccountsRouter({
-        prisma: options.accounts.prisma,
-        config: options.config,
-        mail: options.accounts.mail,
-      }),
+      createAccountsRouter({ prisma: options.accounts.prisma, config: options.config }),
     );
   }
   app.use((_req, _res, next) => {

@@ -2,8 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { RoleInputSchema } from '@drivehire/contracts';
 import type { Config } from '../../config/env.js';
 import { badRequest, forbidden } from '../../errors.js';
-import type { MailAdapter } from '../../ports.js';
 import type { PrismaClient } from '../../generated/client/client.js';
+import { createProfileService } from './profile.js';
 import {
   REFRESH_COOKIE,
   REFRESH_COOKIE_TTL_SECONDS,
@@ -15,7 +15,6 @@ import {
 export interface AccountsDependencies {
   prisma: PrismaClient;
   config: Config;
-  mail: MailAdapter;
 }
 
 function readRefreshCookie(req: Request): string | undefined {
@@ -65,16 +64,17 @@ function accountOf(req: Request) {
 }
 
 /**
- * Real account/auth routes. Handlers own strict IO and response envelopes; the
- * service owns every business transaction. Rejections are forwarded to the
- * central error handler by Express 5's async support.
+ * Real account/auth/profile routes. Handlers own strict IO and response
+ * envelopes; the services own every business transaction. Rejections are
+ * forwarded to the central error handler by Express 5's async support.
  */
-export function createAccountsRouter({ prisma, config, mail }: AccountsDependencies): Router {
+export function createAccountsRouter({ prisma, config }: AccountsDependencies): Router {
   const service = createAccountsService({ prisma, config });
+  const profile = createProfileService({ prisma });
   const router = Router();
 
   router.post('/auth/register', async (req, res) => {
-    await service.register(req.body, mail);
+    await service.register(req.body);
     res.status(202).json({ success: true, data: { acknowledged: true } });
   });
 
@@ -84,7 +84,7 @@ export function createAccountsRouter({ prisma, config, mail }: AccountsDependenc
   });
 
   router.post('/auth/resend-otp', async (req, res) => {
-    await service.resendOtp(req.body, mail);
+    await service.resendOtp(req.body);
     res.status(202).json({ success: true, data: { acknowledged: true } });
   });
 
@@ -127,7 +127,7 @@ export function createAccountsRouter({ prisma, config, mail }: AccountsDependenc
   });
 
   router.post('/auth/forgot-password', async (req, res) => {
-    await service.forgotPassword(req.body, mail);
+    await service.forgotPassword(req.body);
     res.status(202).json({ success: true, data: { acknowledged: true } });
   });
 
@@ -136,13 +136,23 @@ export function createAccountsRouter({ prisma, config, mail }: AccountsDependenc
     res.json({ success: true, data: { acknowledged: true } });
   });
 
+  router.get('/users/me', service.requireAccount, async (req, res) => {
+    const user = await profile.getProfile(accountOf(req));
+    res.json({ success: true, data: user });
+  });
+
+  router.patch('/users/me', service.requireAccount, async (req, res) => {
+    const user = await profile.updateProfile(accountOf(req), req.body);
+    res.json({ success: true, data: user });
+  });
+
   router.post('/users/me/roles', service.requireAccount, async (req, res) => {
     const role = (req.body as { role?: unknown } | undefined)?.role;
     if (typeof role !== 'string') throw badRequest('Request validation failed');
     // Only DRIVER is self-grantable; ADMIN is operator-granted and OWNER is retired.
     if (role !== 'DRIVER') throw forbidden('That role cannot be self-enabled');
     RoleInputSchema.parse(req.body);
-    const user = await service.enableDriver(accountOf(req));
+    const user = await profile.enableDriver(accountOf(req));
     res.json({ success: true, data: user });
   });
 

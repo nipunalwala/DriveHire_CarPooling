@@ -11,9 +11,9 @@ import {
   ResetInputSchema,
 } from '@drivehire/contracts';
 import type { Page, PageMeta, SessionDto, UserDto } from '@drivehire/contracts';
-import type { MailAdapter } from '../../ports.js';
 import type { PrismaClient } from '../../generated/client/client.js';
 import type { Config } from '../../config/env.js';
+import { authEmailAad, encryptOutboxSecret } from './outbox-crypto.js';
 import {
   badRequest,
   conflict,
@@ -43,7 +43,7 @@ const RESET_TTL_MINUTES = 15;
 export const REFRESH_COOKIE = 'drivehire_refresh';
 export { ACCESS_TTL_SECONDS, REFRESH_COOKIE_TTL_SECONDS };
 
-type UserRow = {
+export type UserRow = {
   id: string;
   displayName: string;
   email: string;
@@ -73,7 +73,7 @@ function equalizeTiming(plain: string): Promise<void> {
   return dummyHash.then((stored) => passwordMatches(stored, plain)).then(() => undefined);
 }
 
-function toUserDto(row: UserRow, roles: Role[]): UserDto {
+export function toUserDto(row: UserRow, roles: Role[]): UserDto {
   const user: UserDto = {
     id: row.id,
     displayName: row.displayName,
@@ -96,9 +96,9 @@ export interface AuthenticatedSession {
 }
 
 export interface AccountsService {
-  register(input: unknown, mail: MailAdapter): Promise<{ acknowledged: true }>;
+  register(input: unknown): Promise<{ acknowledged: true }>;
   verifyEmail(input: unknown): Promise<{ acknowledged: true }>;
-  resendOtp(input: unknown, mail: MailAdapter): Promise<{ acknowledged: true }>;
+  resendOtp(input: unknown): Promise<{ acknowledged: true }>;
   login(input: unknown): Promise<AuthenticatedSession>;
   refresh(rawRefreshToken: string | undefined): Promise<AuthenticatedSession>;
   logout(
@@ -108,9 +108,8 @@ export interface AccountsService {
   logoutAll(account: CurrentAccount): Promise<{ acknowledged: true }>;
   listSessions(account: CurrentAccount, query: Record<string, string>): Promise<Page<SessionDto>>;
   revokeSession(account: CurrentAccount, sessionId: string): Promise<{ acknowledged: true }>;
-  forgotPassword(input: unknown, mail: MailAdapter): Promise<{ acknowledged: true }>;
+  forgotPassword(input: unknown): Promise<{ acknowledged: true }>;
   resetPassword(input: unknown): Promise<{ acknowledged: true }>;
-  enableDriver(account: CurrentAccount): Promise<UserDto>;
   requireAccount(req: Request, res: Response, next: NextFunction): void;
 }
 
@@ -118,6 +117,11 @@ const PageQuerySchema = z.strictObject({
   page: z.coerce.number().int().min(1).max(2147483647).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+export async function rolesOf(prisma: PrismaClient, userId: string): Promise<Role[]> {
+  const rows = await prisma.userRole.findMany({ where: { userId }, select: { role: true } });
+  return [...new Set(rows.map((row) => row.role as Role))].sort();
+}
 
 export function createAccountsService({
   prisma,
@@ -159,11 +163,6 @@ export function createAccountsService({
       .sign(issuerKey);
   }
 
-  async function rolesOf(userId: string): Promise<Role[]> {
-    const rows = await prisma.userRole.findMany({ where: { userId }, select: { role: true } });
-    return [...new Set(rows.map((row) => row.role as Role))].sort();
-  }
-
   async function createSession(
     userId: string,
     when: Date,
@@ -193,7 +192,7 @@ export function createAccountsService({
     return {
       accessToken,
       expiresIn: ACCESS_TTL_SECONDS as 900,
-      user: toUserDto(user, await rolesOf(user.id)),
+      user: toUserDto(user, await rolesOf(prisma, user.id)),
       refreshToken,
       sessionId,
     };
@@ -270,7 +269,7 @@ export function createAccountsService({
       return {
         userId: claims.sub,
         sessionId: claims.sid,
-        roles: await rolesOf(claims.sub),
+        roles: await rolesOf(prisma, claims.sub),
       };
     } catch {
       return null;
@@ -278,12 +277,12 @@ export function createAccountsService({
   }
 
   return {
-    async register(input, mail) {
+    async register(input) {
       const payload = parseOrBadRequest(RegisterInputSchema, input);
       const email = normalizeEmail(payload.email);
       const passwordHashed = await passwordHash(payload.password);
-      let otp = '';
-      const created = await prisma.$transaction(async (tx) => {
+      const otp = sixDigitOtp();
+      await prisma.$transaction(async (tx) => {
         try {
           const user = await tx.user.create({
             data: { email, displayName: payload.displayName, passwordHash: passwordHashed },
@@ -291,8 +290,7 @@ export function createAccountsService({
           });
           await tx.userRole.create({ data: { userId: user.id, role: 'PASSENGER' } });
           const now = new Date();
-          otp = sixDigitOtp();
-          await tx.authChallenge.create({
+          const challenge = await tx.authChallenge.create({
             data: {
               userId: user.id,
               purpose: 'VERIFY_EMAIL',
@@ -301,10 +299,10 @@ export function createAccountsService({
               attempts: 0,
               resendAfter: new Date(now.getTime() + RESEND_COOLDOWN_SECONDS * 1000),
             },
+            select: { id: true },
           });
-          // The verification email is committed durably with the account so a
-          // delivery failure can never strand an unverified account (Task2
-          // delivers from this outbox via the worker).
+          // The account, single-live challenge and encrypted auth-email job
+          // commit atomically; the raw OTP only lives in the AEAD ciphertext.
           const priorVersions = await tx.outboxEvent.count({
             where: {
               aggregateType: 'user',
@@ -318,12 +316,16 @@ export function createAccountsService({
               aggregateType: 'user',
               aggregateId: user.id,
               aggregateVersion: priorVersions + 1,
-              payload: { subject: 'Verify your DriveHire account' },
+              payload: { challengeId: challenge.id },
+              sensitivePayloadCiphertext: encryptOutboxSecret(
+                config.authOutboxKey,
+                authEmailAad('AUTH_VERIFY_EMAIL', user.id),
+                { recipient: email, secret: otp },
+              ),
               occurredAt: now,
               availableAt: now,
             },
           });
-          return user.id;
         } catch (error) {
           if (
             typeof error === 'object' &&
@@ -336,18 +338,6 @@ export function createAccountsService({
           throw error;
         }
       });
-      // Direct send keeps Task1 journeys usable; outbox retry (Task2) is the
-      // durable backstop. Failures after commit must not fail the request.
-      try {
-        await mail.send({
-          recipient: email,
-          subject: 'Verify your DriveHire account',
-          text: `Your DriveHire verification code is ${otp}. It expires in 10 minutes.`,
-          messageId: created,
-        });
-      } catch {
-        /* Outbox retry covers delivery. */
-      }
       return { acknowledged: true };
     },
 
@@ -404,7 +394,7 @@ export function createAccountsService({
       return { acknowledged: true };
     },
 
-    async resendOtp(input, mail) {
+    async resendOtp(input) {
       const payload = parseOrBadRequest(EmailInputSchema, input);
       const email = normalizeEmail(payload.email);
       const challenge = (
@@ -449,22 +439,17 @@ export function createAccountsService({
             aggregateType: 'user',
             aggregateId: challenge.userId,
             aggregateVersion: priorVersions + 1,
-            payload: { subject: 'Your new DriveHire verification code' },
+            payload: { challengeId: challenge.id },
+            sensitivePayloadCiphertext: encryptOutboxSecret(
+              config.authOutboxKey,
+              authEmailAad('AUTH_VERIFY_EMAIL', challenge.userId),
+              { recipient: email, secret: otp },
+            ),
             occurredAt: new Date(now),
             availableAt: new Date(now),
           },
         });
       });
-      try {
-        await mail.send({
-          recipient: email,
-          subject: 'Your new DriveHire verification code',
-          text: `Your DriveHire verification code is ${otp}. It expires in 10 minutes.`,
-          messageId: challenge.userId,
-        });
-      } catch {
-        /* Outbox retry covers delivery. */
-      }
       return { acknowledged: true };
     },
 
@@ -504,11 +489,18 @@ export function createAccountsService({
         if (row.session.revokedAt || row.session.absoluteExpiresAt <= now || row.expiresAt <= now) {
           return null;
         }
-        const successor = newOpaqueToken();
-        await tx.refreshToken.update({
-          where: { id: row.id },
+        // A conditional consume decides the single winner under concurrency. A
+        // losing concurrent replay revokes the whole family so no successor can
+        // survive, instead of surfacing an internal uniqueness error.
+        const consumed = await tx.refreshToken.updateMany({
+          where: { id: row.id, consumedAt: null, revokedAt: null },
           data: { consumedAt: now },
         });
+        if (consumed.count === 0) {
+          await revokeFamily(tx, row.sessionId, 'REPLAY');
+          return null;
+        }
+        const successor = newOpaqueToken();
         await tx.refreshToken.create({
           data: {
             sessionId: row.sessionId,
@@ -593,7 +585,7 @@ export function createAccountsService({
       return { acknowledged: true };
     },
 
-    async forgotPassword(input, mail) {
+    async forgotPassword(input) {
       const payload = parseOrBadRequest(EmailInputSchema, input);
       const email = normalizeEmail(payload.email);
       const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
@@ -611,7 +603,7 @@ export function createAccountsService({
           },
           data: { invalidatedAt: new Date(now) },
         });
-        await tx.authChallenge.create({
+        const challenge = await tx.authChallenge.create({
           data: {
             userId: user.id,
             purpose: 'RESET_PASSWORD',
@@ -620,6 +612,7 @@ export function createAccountsService({
             attempts: 0,
             resendAfter: new Date(now + RESEND_COOLDOWN_SECONDS * 1000),
           },
+          select: { id: true },
         });
         const priorVersions = await tx.outboxEvent.count({
           where: {
@@ -634,47 +627,44 @@ export function createAccountsService({
             aggregateType: 'user',
             aggregateId: user.id,
             aggregateVersion: priorVersions + 1,
-            payload: { subject: 'Reset your DriveHire password' },
+            payload: { challengeId: challenge.id },
+            sensitivePayloadCiphertext: encryptOutboxSecret(
+              config.authOutboxKey,
+              authEmailAad('AUTH_RESET_PASSWORD', user.id),
+              { recipient: email, secret: rawToken },
+            ),
             occurredAt: new Date(now),
             availableAt: new Date(now),
           },
         });
       });
-      try {
-        await mail.send({
-          recipient: email,
-          subject: 'Reset your DriveHire password',
-          text: `Use this one-use link within 15 minutes to reset your password: ${config.appOrigin}/reset-password?token=${rawToken}`,
-          messageId: user.id,
-        });
-      } catch {
-        /* Outbox retry covers delivery. */
-      }
       return { acknowledged: true };
     },
 
     async resetPassword(input) {
       const payload = parseOrBadRequest(ResetInputSchema, input);
-      const challenge = await prisma.authChallenge.findFirst({
-        where: {
-          purpose: 'RESET_PASSWORD',
-          secretHash: hmacHex('reset', payload.token),
-          consumedAt: null,
-          invalidatedAt: null,
-        },
-        select: { id: true, userId: true, expiresAt: true },
-      });
-      if (!challenge || challenge.expiresAt.getTime() <= Date.now()) {
-        throw badRequest('Reset link is invalid or expired');
-      }
-      // One use only: the conditional consume decides the winner.
-      const consumed = await prisma.authChallenge.updateMany({
-        where: { id: challenge.id, consumedAt: null, invalidatedAt: null },
-        data: { consumedAt: new Date() },
-      });
-      if (consumed.count === 0) throw badRequest('Reset link is invalid or expired');
       const passwordHashed = await passwordHash(payload.newPassword);
+      // The one-use consume, password change and session revocation are a
+      // single transaction so a crash can never consume the token without
+      // applying the reset (or apply it without revoking sessions).
       await prisma.$transaction(async (tx) => {
+        const challenge = await tx.authChallenge.findFirst({
+          where: {
+            purpose: 'RESET_PASSWORD',
+            secretHash: hmacHex('reset', payload.token),
+            consumedAt: null,
+            invalidatedAt: null,
+          },
+          select: { id: true, userId: true, expiresAt: true },
+        });
+        if (!challenge || challenge.expiresAt.getTime() <= Date.now()) {
+          throw badRequest('Reset link is invalid or expired');
+        }
+        const consumed = await tx.authChallenge.updateMany({
+          where: { id: challenge.id, consumedAt: null, invalidatedAt: null },
+          data: { consumedAt: new Date() },
+        });
+        if (consumed.count === 0) throw badRequest('Reset link is invalid or expired');
         await tx.user.update({
           where: { id: challenge.userId },
           data: { passwordHash: passwordHashed },
@@ -683,27 +673,6 @@ export function createAccountsService({
         await revokeAllSessions(tx, challenge.userId, 'PASSWORD_RESET');
       });
       return { acknowledged: true };
-    },
-
-    async enableDriver(account) {
-      const user = await prisma.user.findUnique({ where: { id: account.userId } });
-      if (!user || user.status !== 'ACTIVE' || user.emailVerifiedAt === null) {
-        throw forbidden('Verified active accounts may enable driver onboarding');
-      }
-      try {
-        await prisma.userRole.create({ data: { userId: account.userId, role: 'DRIVER' } });
-      } catch (error) {
-        if (
-          typeof error === 'object' &&
-          error !== null &&
-          'code' in error &&
-          (error as { code?: string }).code === 'P2002'
-        ) {
-          throw conflict('Driver role is already enabled');
-        }
-        throw error;
-      }
-      return toUserDto(user, await rolesOf(account.userId));
     },
 
     requireAccount(req, _res, next) {
