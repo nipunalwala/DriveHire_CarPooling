@@ -1,5 +1,7 @@
 # 00 · Lean master execution guide
 
+Current owner integration instruction (2026-10-18): execute directly on `main` and push verified/reviewed completed phases to `origin/main`. This supersedes earlier branch/no-push restrictions; preserve unfinished parallel files, commit under the owner's GitHub identity and investigate CI failures. Do not deploy production. See persistent agent responsibilities for the backend/frontend split.
+
 ## Current owner authorization and agent ownership
 
 Read [persistent agent responsibilities](../planning/agent-responsibilities.md) before executing any milestone. The owner authorized continued execution through all remaining phases without routine approval. Free-model OpenCode implements backend/contracts/tests; GPT-6.1 Sol in Codex implements frontend and UI/UX with Impeccable from03 onward. Record backend-to-frontend handoffs in each milestone ledger. Milestone07 includes actual ImageGen assets, responsive optimization and provenance;08 verifies the integrated result. Historical approval/stop language below does not revoke this renewed authorization. No push, merge or deployment is authorized.

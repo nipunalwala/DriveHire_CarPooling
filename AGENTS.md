@@ -1,5 +1,7 @@
 # DriveHire implementation boundaries
 
+Current integration workflow (owner2026-10-18): work directly on `main`, commit with the owner's configured GitHub identity and push to `origin/main` after each phase passes implementation, independent review and required verification. Fix/check CI before phase completion claims. Preserve concurrent unfinished work and stage only owned files. This supersedes older no-main/no-push wording below and in historical prompts; no production deployment is authorized.
+
 Persistent owner preferences and execution ownership: read `docs/planning/agent-responsibilities.md`. The owner authorized all remaining tasks/phases on 2026-10-18 without routine phase approval. OpenCode is restricted to verified free models for backend/contracts/tests; GPT-6.1 Sol in Codex owns frontend/UI/UX with Impeccable, starting in03. ImageGen produces committed original imagery with provenance in07. Hand frontend work to Codex rather than having OpenCode design screens. These current instructions supersede historical stop/approval boundaries for continued implementation; push/merge/deploy still require authorization.
 
 Canonical active scope is the approved lean design in docs/superpowers/specs/2026-10-17-lean-first-release-design.md, current docs/specification/, docs/api/openapi.json and docs/planning-model.json. The owner approved the written design; the reconciled implementation plan still requires review before new feature code. See docs/planning/approval-log.md. User instructions supersede this file and skill defaults.

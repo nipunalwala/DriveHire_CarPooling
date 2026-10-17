@@ -44,8 +44,8 @@ jobs:
       - run: npm ci
       - run: node scripts/init-local-env.mjs
       - run: npm run db:generate
-      - run: npm run db:validate -- --target test
       - run: docker compose -f compose.test.yml up -d --wait --wait-timeout 300
+      - run: npm run db:validate -- --target test
       - run: npm run db:migrate:deploy -- --target test
       - run: npm run test:integration
       - run: npm run db:test:constraints

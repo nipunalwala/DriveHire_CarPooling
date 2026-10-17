@@ -9,7 +9,8 @@ COPY tsconfig.base.json ./
 COPY packages/contracts ./packages/contracts
 COPY apps/api ./apps/api
 COPY apps/web ./apps/web
-RUN npm run build
+COPY scripts/generate-client.mjs ./scripts/generate-client.mjs
+RUN npm run db:generate && npm run build
 
 FROM node:24.22.0-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f AS api
 ENV NODE_ENV=production

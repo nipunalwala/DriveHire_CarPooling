@@ -1,5 +1,9 @@
 # Approval record
 
+## Main-branch execution and phase pushes — 2026-10-18
+
+The owner instructed: “Also now onwards work on main” and “And push after completion of each phase,” and asked to update memory and implementation. Work now proceeds directly on `main`; commit/push each completed, reviewed and verified phase to `origin/main`, inspect CI and fix failures. This supersedes the older no-main/no-push restrictions. Keep in-progress parallel work local and never stage another agent's unfinished files. Owner GitHub commit identity and free OpenCode/backend versus Codex/frontend ownership remain. No production deployment is authorized.
+
 The user reviewed the planning completion handoff and said “Yes Continue.” This authorizes Phase01 implementation of the approved foundation prompt in the same repository. The Phase01 execution uses native Superpowers execution with test-first work and one independent final review. Current scope is workspace/toolchain, operational API/worker, browser-safe contracts, a minimal React routing shell, isolated local services and CI. Business schema/migrations are Phase02; product functionality follows later phases. No merge, production launch or repository-visibility change is implied.
 
 ## Lean first release —2026-10-17

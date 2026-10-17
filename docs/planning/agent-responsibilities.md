@@ -2,7 +2,7 @@
 
 Owner-approved on 2026-10-18. This file is persistent project memory for all coding sessions; read it with AGENTS.md and the owning implementation prompt.
 
-- Continue all remaining tasks and milestones in order without routine approval between phases. Preserve required verification and independent milestone review. Do not push, merge or deploy without separate authorization.
+- Continue all remaining tasks and milestones in order without routine approval between phases. Preserve required verification and independent milestone review. Work directly on `main` as explicitly authorized on2026-10-18. Commit and push to `origin/main` after each phase is implemented, reviewed and verified; inspect its CI results and fix failures before calling the phase complete. Never push unfinished parallel work or claim pending frontend/review is complete. Production deployment still requires separate authorization.
 - OpenCode uses verified free models only, including background/title/review calls. Use it for backend services, database work, business rules, shared contracts and backend tests. Never silently substitute a paid model.
 - GPT-6.1 Sol in Codex owns frontend implementation and UI/UX decisions with the Impeccable skill: layouts, design tokens, typography, spacing, responsive behavior, accessibility, interaction design, UX copy and loading/error/empty states. Codex usage is separate from the free-only OpenCode restriction. OpenCode must not independently implement or redesign product screens.
 - Establish reusable UI foundations during milestone03 authentication screens. Apply them to the actual screens in milestones04–06; do not defer their usability or visual quality until07. Browser and end-to-end verification must cover the implemented user journeys.
