@@ -3,7 +3,10 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
+  // The API/test process may export NODE_ENV=development or test. A production
+  // browser build must still resolve React and its JSX runtime in production.
+  if (command === 'build' && mode === 'production') process.env.NODE_ENV = 'production';
   const envDir = fileURLToPath(new URL('../..', import.meta.url));
   const publicEnv = loadEnv(mode, envDir, 'VITE_');
   // Backend NODE_ENV must not change Vite's selected development/production mode.
