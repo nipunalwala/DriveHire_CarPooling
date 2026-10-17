@@ -1,5 +1,7 @@
 import { createServer } from 'node:http';
 import { createApp } from './app.js';
+import { createClamAvScan } from './adapters/clamav-scan.js';
+import { createPrivateStorage } from './adapters/private-storage.js';
 import { parseEnv } from './config/env.js';
 import { createLogger, safeErrorMetadata } from './config/logger.js';
 import { createDatabase, probeReadiness } from './runtime/database.js';
@@ -10,11 +12,15 @@ const config = parseEnv(process.env);
 const logger = createLogger(config.logLevel);
 const database = createDatabase(config.databaseUrl);
 const prisma = createPrisma(config.databaseUrl);
+const storage = createPrivateStorage({ root: config.storagePrivateRoot });
+const scanner = createClamAvScan(config.scan);
 const app = createApp({
   config,
   logger,
   readiness: () => probeReadiness(database),
   accounts: { prisma },
+  providers: { storage, scanner },
+  admin: { prisma },
 });
 const server = createServer(app);
 let stopping = false;

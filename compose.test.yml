@@ -22,6 +22,11 @@ services:
   scanner-test:
     image: clamav/clamav@sha256:638d90201ee7ee6a82d249a2fc23b132e578673b5f1f2766852b127676ca1ef6
     ports: ['127.0.0.1:13310:3310']
-    volumes: ['clamav-test:/var/lib/clamav']
+    # A dedicated, benign test signature lets backend integration tests prove a
+    # real scanner rejection without shipping actual malware. Loaded by clamd
+    # alongside the standard signature database.
+    volumes:
+      - 'clamav-test:/var/lib/clamav'
+      - './docker/clamav/drivehire-test.ndb:/var/lib/clamav/drivehire-test.ndb'
 volumes:
   clamav-test:

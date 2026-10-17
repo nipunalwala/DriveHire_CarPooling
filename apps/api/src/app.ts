@@ -9,13 +9,21 @@ import type { Config } from './config/env.js';
 import { safeErrorMetadata } from './config/logger.js';
 import { HttpError } from './errors.js';
 import type { PrismaClient } from './generated/client/client.js';
+import type { ScanAdapter, StorageAdapter } from './ports.js';
 import { createAccountsRouter } from './modules/accounts/routes.js';
+import { createAccountsService } from './modules/accounts/service.js';
+import { createProvidersRouter } from './modules/providers/routes.js';
+import { createAdminRouter } from './modules/admin/routes.js';
 
 export type ReadinessState = { database: boolean; schema: boolean; worker: boolean };
 export type ReadinessProbe = () => Promise<ReadinessState>;
 
 /** Optional real account dependencies; absent means only operational routes mount. */
 export type AccountsDependencies = { prisma: PrismaClient };
+/** Optional private-evidence dependencies for the provider onboarding routes. */
+export type ProviderDependencies = { storage: StorageAdapter; scanner: ScanAdapter };
+/** Optional administrator dependencies; mounts the admin review surface. */
+export type AdminDependencies = { prisma: PrismaClient };
 
 async function isReady(probe: ReadinessProbe): Promise<boolean> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -40,6 +48,8 @@ export function createApp(options: {
   logger: Logger;
   readiness: ReadinessProbe;
   accounts?: AccountsDependencies;
+  providers?: ProviderDependencies;
+  admin?: AdminDependencies;
 }) {
   const app = express();
   app.disable('x-powered-by');
@@ -96,6 +106,35 @@ export function createApp(options: {
       '/api/v1',
       createAccountsRouter({ prisma: options.accounts.prisma, config: options.config }),
     );
+    if (options.providers) {
+      const accountGuard = createAccountsService({
+        prisma: options.accounts.prisma,
+        config: options.config,
+      });
+      app.use(
+        '/api/v1',
+        createProvidersRouter({
+          prisma: options.accounts.prisma,
+          config: options.config,
+          storage: options.providers.storage,
+          scanner: options.providers.scanner,
+          requireAccount: accountGuard.requireAccount,
+        }),
+      );
+    }
+    if (options.admin) {
+      const accountGuard = createAccountsService({
+        prisma: options.accounts.prisma,
+        config: options.config,
+      });
+      app.use(
+        '/api/v1',
+        createAdminRouter({
+          prisma: options.admin.prisma,
+          requireAccount: accountGuard.requireAccount,
+        }),
+      );
+    }
   }
   app.use((_req, _res, next) => {
     next(new HttpError(404, 'NOT_FOUND', 'Resource not found'));
