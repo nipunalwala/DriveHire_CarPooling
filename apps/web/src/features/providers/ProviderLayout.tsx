@@ -50,7 +50,15 @@ export function SelectField({
     </div>
   );
 }
-export function CitySelect({ name, defaultValue = '' }: { name: string; defaultValue?: string }) {
+export function CitySelect({
+  name,
+  defaultValue = '',
+  label = 'Service city',
+}: {
+  name: string;
+  defaultValue?: string;
+  label?: string;
+}) {
   const [cities, setCities] = useState<CityDto[]>([]);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -95,7 +103,7 @@ export function CitySelect({ name, defaultValue = '' }: { name: string; defaultV
         key={cities.length}
         id={name}
         name={name}
-        label="Service city"
+        label={label}
         defaultValue={defaultValue}
         required
         disabled={!cities.length}

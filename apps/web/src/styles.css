@@ -602,3 +602,76 @@ form {
     gap: 16px;
   }
 }
+
+.journey-page .journey-price {
+  font-size: 1.6rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.journey-page .journey-price span {
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+.journey-page .record-list {
+  list-style: none;
+  padding: 0;
+  margin: 24px 0;
+}
+.journey-page .record-list > li {
+  padding-block: 24px;
+  border-bottom: 1px solid #d5e1d7;
+}
+.journey-page .record-list h2 {
+  margin-top: 0;
+}
+.journey-page .record-list p {
+  overflow-wrap: anywhere;
+}
+
+.journey-page .journey-summary {
+  margin-bottom: 28px;
+}
+.journey-page .estimate-panel {
+  margin-top: 32px;
+  padding-block: 24px;
+  border-block: 1px solid #b8cbbd;
+}
+.journey-page .journey-facts {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 2fr;
+  gap: 12px 20px;
+  margin-block: 24px;
+}
+.journey-page .journey-facts dt {
+  color: #526a64;
+}
+.journey-page .journey-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.journey-page fieldset {
+  min-width: 0;
+}
+@media (max-width: 520px) {
+  .journey-page .journey-facts {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .journey-page .journey-facts dd {
+    margin-bottom: 12px;
+  }
+}
+
+.journey-page .checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  margin-block: 16px;
+}
+.journey-page .checkbox-field input {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  accent-color: #166453;
+}

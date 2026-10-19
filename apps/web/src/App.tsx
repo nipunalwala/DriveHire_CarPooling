@@ -1,4 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
+import { BookingsPage, BookingDetailPage } from './features/bookings/BookingsPage.js';
+import { BookingNewPage } from './features/bookings/BookingNewPage.js';
+import { DriversPage, DriverDetailPage } from './features/drivers/DriversPage.js';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { MoveRight } from 'lucide-react';
 import { AuthProvider, ProtectedRoute, useAuth } from './auth/AuthProvider.js';
@@ -14,6 +17,15 @@ import { VehiclesPage } from './features/providers/VehiclesPage.js';
 import { DriverQualificationPage } from './features/providers/DriverQualificationPage.js';
 import { VerificationPage } from './features/admin/verification/VerificationPage.js';
 import { UsersPage } from './features/admin/users/UsersPage.js';
+const TripPage = lazy(() =>
+  import('./features/trips/TripPage.js').then((module) => ({ default: module.TripPage })),
+);
+const AdminOperationsPage = lazy(() =>
+  import('./features/admin/operations/AdminOperationsPage.js').then((module) => ({
+    default: module.AdminOperationsPage,
+  })),
+);
+
 function Shell() {
   const { user } = useAuth();
   const location = useLocation();
@@ -47,104 +59,156 @@ function Shell() {
         </nav>
       </header>
       <main id="main" tabIndex={-1}>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <section className="landing-intro">
-                <h1>
-                  Your journey.
-                  <br />A little more together.
-                </h1>
-                <p>
-                  Hire a driver for your own vehicle, or share a scheduled journey with a carpool.
-                  Start with an account, then choose your next step.
-                </p>
-                <Link className="button button-primary" to={user ? '/profile' : '/register'}>
-                  {user ? 'Go to your profile' : 'Create your account'}
-                  <MoveRight size={19} aria-hidden="true" />
-                </Link>
-                <div className="service-summary">
-                  <div>
-                    <h2>Driver hiring</h2>
-                    <p>A driver for your approved personal vehicle.</p>
+        <Suspense fallback={<p role="status">Loading journey…</p>}>
+          <Routes>
+            <Route
+              path="/app/trips/:id"
+              element={
+                <ProtectedRoute>
+                  <TripPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/operations"
+              element={
+                <ProtectedRoute>
+                  <AdminOperationsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/bookings"
+              element={
+                <ProtectedRoute>
+                  <BookingsPage key="passenger" />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/bookings/:id"
+              element={
+                <ProtectedRoute>
+                  <BookingDetailPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/driver/bookings"
+              element={
+                <ProtectedRoute>
+                  <BookingsPage key="driver" driver />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/bookings/new"
+              element={
+                <ProtectedRoute>
+                  <BookingNewPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/drivers" element={<DriversPage />} />
+            <Route path="/drivers/:id" element={<DriverDetailPage />} />
+            <Route
+              path="/"
+              element={
+                <section className="landing-intro">
+                  <h1>
+                    Your journey.
+                    <br />A little more together.
+                  </h1>
+                  <p>
+                    Hire a driver for your own vehicle, or share a scheduled journey with a carpool.
+                    Start with an account, then choose your next step.
+                  </p>
+                  <Link className="button button-primary" to={user ? '/profile' : '/register'}>
+                    {user ? 'Go to your profile' : 'Create your account'}
+                    <MoveRight size={19} aria-hidden="true" />
+                  </Link>
+                  <div className="service-summary">
+                    <div>
+                      <h2>Driver hiring</h2>
+                      <p>A driver for your approved personal vehicle.</p>
+                    </div>
+                    <div>
+                      <h2>Shared journeys</h2>
+                      <p>A seat in a scheduled, instant-join carpool.</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2>Shared journeys</h2>
-                    <p>A seat in a scheduled, instant-join carpool.</p>
-                  </div>
-                </div>
-                <p className="small-text">
-                  Booking and carpool journeys are being built. Payment is not collected by
-                  DriveHire.
-                </p>
-              </section>
-            }
-          />
-          <Route
-            path="/vehicles"
-            element={
-              <ProtectedRoute>
-                <VehiclesPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/driver/qualification"
-            element={
-              <ProtectedRoute>
-                <DriverQualificationPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/verifications"
-            element={
-              <ProtectedRoute>
-                <VerificationPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <ProtectedRoute>
-                <UsersPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route
-            path="/driver/availability"
-            element={
-              <ProtectedRoute>
-                <DriverAvailabilityPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/profile"
-            element={
-              <ProtectedRoute>
-                <ProfilePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="*"
-            element={
-              <>
-                <h1>Page not found</h1>
-                <p>This route is not available.</p>
-                <Link to="/">Return home</Link>
-              </>
-            }
-          />
-        </Routes>
+                  <p className="small-text">
+                    Booking and carpool journeys are being built. Payment is not collected by
+                    DriveHire.
+                  </p>
+                </section>
+              }
+            />
+            <Route
+              path="/vehicles"
+              element={
+                <ProtectedRoute>
+                  <VehiclesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/driver/qualification"
+              element={
+                <ProtectedRoute>
+                  <DriverQualificationPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/verifications"
+              element={
+                <ProtectedRoute>
+                  <VerificationPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <ProtectedRoute>
+                  <UsersPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route
+              path="/driver/availability"
+              element={
+                <ProtectedRoute>
+                  <DriverAvailabilityPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="*"
+              element={
+                <>
+                  <h1>Page not found</h1>
+                  <p>This route is not available.</p>
+                  <Link to="/">Return home</Link>
+                </>
+              }
+            />
+          </Routes>
+        </Suspense>
       </main>
       <footer className="site-footer">
         <span>DriveHire &amp; CarPooling</span>

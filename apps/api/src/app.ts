@@ -15,6 +15,10 @@ import { createAccountsService } from './modules/accounts/service.js';
 import { createCitiesRouter } from './modules/cities/routes.js';
 import { createProvidersRouter } from './modules/providers/routes.js';
 import { createAdminRouter } from './modules/admin/routes.js';
+import { createAdminOperationsRouter } from './modules/admin/operations-routes.js';
+import { createBookingsRouter } from './modules/bookings/routes.js';
+import { createBookingsReadRouter } from './modules/bookings/read-routes.js';
+import { createTripsRouter } from './modules/trips/routes.js';
 
 export type ReadinessState = { database: boolean; schema: boolean; worker: boolean };
 export type ReadinessProbe = () => Promise<ReadinessState>;
@@ -107,6 +111,38 @@ export function createApp(options: {
     app.use(
       '/api/v1',
       createAccountsRouter({ prisma: options.accounts.prisma, config: options.config }),
+    );
+    const bookingGuard = createAccountsService({
+      prisma: options.accounts.prisma,
+      config: options.config,
+    });
+    app.use(
+      '/api/v1',
+      createBookingsRouter({
+        prisma: options.accounts.prisma,
+        requireAccount: bookingGuard.requireAccount,
+      }),
+    );
+    app.use(
+      '/api/v1',
+      createBookingsReadRouter({
+        prisma: options.accounts.prisma,
+        requireAccount: bookingGuard.requireAccount,
+      }),
+    );
+    app.use(
+      '/api/v1',
+      createTripsRouter({
+        prisma: options.accounts.prisma,
+        requireAccount: bookingGuard.requireAccount,
+      }),
+    );
+    app.use(
+      '/api/v1',
+      createAdminOperationsRouter({
+        prisma: options.accounts.prisma,
+        requireAccount: bookingGuard.requireAccount,
+      }),
     );
     if (options.providers) {
       const accountGuard = createAccountsService({

@@ -10,8 +10,17 @@ import {
   type VerificationDto,
 } from '@drivehire/contracts';
 import type { Prisma, PrismaClient } from '../../generated/client/client.js';
-import { badRequest, conflict, forbidden, notFound, unauthenticated } from '../../errors.js';
+import {
+  HttpError,
+  badRequest,
+  conflict,
+  forbidden,
+  notFound,
+  unauthenticated,
+} from '../../errors.js';
 import type { AccountRequest, CurrentAccount, Role } from '../accounts/service.js';
+import { withBoundedRetry } from '../bookings/locks.js';
+import { withSuspensionResources, resolveSuspendedBookings } from '../bookings/commitments.js';
 import { toUserDto } from '../accounts/service.js';
 
 // Minimal administrator surface: user listing/support read, suspension and
@@ -226,84 +235,96 @@ export function createAdminService({ prisma }: { prisma: PrismaClient }): AdminS
       if (!parsed.success) throw badRequest('Request validation failed');
       if (!z.uuid().safeParse(id).success) throw notFound('User not found');
       const now = new Date();
-      const updated = await prisma.$transaction(async (tx) => {
-        // One serializing lock per admin suspension: concurrent mutual
-        // suspensions cannot both observe two active admins and both commit.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(${ADMIN_SUSPENSION_LOCK_KEY}::bigint)::text AS lock`;
-        // Re-validate the caller from current committed state; a concurrent
-        // suspension may have removed the caller's active administrator access.
-        const caller = await tx.user.findUnique({
-          where: { id: account.userId },
-          include: { roles: { select: { role: true } } },
-        });
-        if (
-          !caller ||
-          caller.status !== 'ACTIVE' ||
-          !caller.roles.some((role) => role.role === 'ADMIN')
-        ) {
-          throw forbidden('Administrator access is no longer active');
-        }
-        await tx.$queryRaw`SELECT id FROM users WHERE id = ${id} FOR UPDATE`;
-        const target = await tx.user.findUnique({
-          where: { id },
-          include: { roles: { select: { role: true } } },
-        });
-        if (!target) throw notFound('User not found');
-        if (target.status === 'SUSPENDED') throw conflict('Account is already suspended');
-        const isAdmin = target.roles.some((role) => role.role === 'ADMIN');
-        // The last active administrator (including the caller) must remain; the
-        // count is now inside the serialized transaction.
-        if (isAdmin) {
-          const activeAdmins = await tx.user.count({
-            where: { status: 'ACTIVE', roles: { some: { role: 'ADMIN' } } },
-          });
-          if (activeAdmins <= 1) {
-            throw conflict('The last active administrator cannot be suspended');
-          }
-        }
-        if (target.id === account.userId) {
-          throw conflict('Administrators cannot suspend themselves');
-        }
-        const user = await tx.user.update({
-          where: { id },
-          data: {
-            status: 'SUSPENDED',
-            suspendedAt: now,
-            suspensionReason: parsed.data.reason,
-            version: { increment: 1 },
-            // Immediately invalidates every issued access/refresh credential.
-            tokenVersion: { increment: 1 },
-          },
-          include: { roles: { select: { role: true } } },
-        });
-        await tx.refreshToken.updateMany({
-          where: { session: { userId: id }, revokedAt: null },
-          data: { revokedAt: now },
-        });
-        await tx.refreshToken.updateMany({
-          where: { session: { userId: id }, consumedAt: null },
-          data: { consumedAt: now },
-        });
-        await tx.refreshSession.updateMany({
-          where: { userId: id, revokedAt: null },
-          data: { revokedAt: now, revocationReason: 'SUSPENDED' },
-        });
-        // Resolve the currently supported provider rows. Booking/carpool/trip
-        // resolution is extended when those services arrive (see ledger).
-        await tx.driverProfile.updateMany({
-          where: { userId: id },
-          data: { acceptingBookings: false },
-        });
-        await appendAudit(tx, {
-          actorId: account.userId,
-          action: 'ADMIN_USER_SUSPEND',
-          subjectType: 'user',
-          subjectId: id,
-          reason: parsed.data.reason,
-          requestId: ctx.requestId,
-        });
-        return user;
-      });
+      const updated = await withBoundedRetry(
+        () =>
+          prisma.$transaction(async (tx) => {
+            // One serializing lock per admin suspension: concurrent mutual
+            // suspensions cannot both observe two active admins and both commit.
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(${ADMIN_SUSPENSION_LOCK_KEY}::bigint)::text AS lock`;
+            return withSuspensionResources(tx, id, account.userId, async () => {
+              // Re-validate the caller from current committed state; a concurrent
+              // suspension may have removed the caller's active administrator access.
+              const caller = await tx.user.findUnique({
+                where: { id: account.userId },
+                include: { roles: { select: { role: true } } },
+              });
+              if (
+                !caller ||
+                caller.status !== 'ACTIVE' ||
+                !caller.roles.some((role) => role.role === 'ADMIN')
+              ) {
+                throw forbidden('Administrator access is no longer active');
+              }
+              await tx.$queryRaw`SELECT id FROM users WHERE id = ${id} FOR UPDATE`;
+              const target = await tx.user.findUnique({
+                where: { id },
+                include: { roles: { select: { role: true } } },
+              });
+              if (!target) throw notFound('User not found');
+              if (target.status === 'SUSPENDED') throw conflict('Account is already suspended');
+              const isAdmin = target.roles.some((role) => role.role === 'ADMIN');
+              // The last active administrator (including the caller) must remain; the
+              // count is now inside the serialized transaction.
+              if (isAdmin) {
+                const activeAdmins = await tx.user.count({
+                  where: { status: 'ACTIVE', roles: { some: { role: 'ADMIN' } } },
+                });
+                if (activeAdmins <= 1) {
+                  throw conflict('The last active administrator cannot be suspended');
+                }
+              }
+              if (target.id === account.userId) {
+                throw conflict('Administrators cannot suspend themselves');
+              }
+              const user = await tx.user.update({
+                where: { id },
+                data: {
+                  status: 'SUSPENDED',
+                  suspendedAt: now,
+                  suspensionReason: parsed.data.reason,
+                  version: { increment: 1 },
+                  // Immediately invalidates every issued access/refresh credential.
+                  tokenVersion: { increment: 1 },
+                },
+                include: { roles: { select: { role: true } } },
+              });
+              await tx.refreshToken.updateMany({
+                where: { session: { userId: id }, revokedAt: null },
+                data: { revokedAt: now },
+              });
+              await tx.refreshToken.updateMany({
+                where: { session: { userId: id }, consumedAt: null },
+                data: { consumedAt: now },
+              });
+              await tx.refreshSession.updateMany({
+                where: { userId: id, revokedAt: null },
+                data: { revokedAt: now, revocationReason: 'SUSPENDED' },
+              });
+              await resolveSuspendedBookings(
+                tx,
+                id,
+                account.userId,
+                parsed.data.reason,
+                ctx.requestId,
+              );
+              await tx.driverProfile.updateMany({
+                where: { userId: id },
+                data: { acceptingBookings: false },
+              });
+              await appendAudit(tx, {
+                actorId: account.userId,
+                action: 'ADMIN_USER_SUSPEND',
+                subjectType: 'user',
+                subjectId: id,
+                reason: parsed.data.reason,
+                requestId: ctx.requestId,
+              });
+              return user;
+            });
+          }),
+        () =>
+          new HttpError(503, 'RETRYABLE_TRANSACTION', 'Suspension conflicted; retry the request'),
+      );
       return toAdminUser(updated);
     },
 

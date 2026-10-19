@@ -3,7 +3,7 @@
   "info": {
     "title": "DriveHire & CarPooling Platform",
     "version": "1.0.0-lean-planning",
-    "description": "Approved lean scope: driver hiring and instant-join carpools. Only health/ready are implemented. No rentals, combined bookings, reviews, product notifications, payments, maps or GPS."
+    "description": "Approved lean scope: driver hiring and instant-join carpools. Driver hiring is implemented through Phase05; carpool delivery remains Phase06. Delivery evidence and limitations are recorded in docs/quality/phase-handoffs. No rentals, combined bookings, reviews, product notifications, payments, maps or GPS."
   },
   "servers": [
     {
@@ -2691,7 +2691,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/drivers/{id}": {
@@ -2852,7 +2852,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/drivers/me": {
@@ -4540,7 +4540,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/vehicles": {
@@ -6265,7 +6265,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/bookings": {
@@ -6441,7 +6441,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       },
       "get": {
         "operationId": "listBookings",
@@ -6632,7 +6632,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/bookings/{id}": {
@@ -6797,7 +6797,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/bookings/{id}/decisions": {
@@ -6972,7 +6972,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/bookings/{id}/cancel": {
@@ -7147,7 +7147,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/carpools": {
@@ -9324,7 +9324,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/trips/{id}": {
@@ -9489,7 +9489,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/trips/{id}/transitions": {
@@ -9664,7 +9664,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/trips/{id}/history": {
@@ -9856,7 +9856,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/admin/users": {
@@ -11350,7 +11350,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/admin/carpools": {
@@ -11771,7 +11771,7 @@
             }
           }
         },
-        "x-delivery-status": "planned"
+        "x-delivery-status": "implemented"
       }
     },
     "/api/v1/admin/audit-logs": {

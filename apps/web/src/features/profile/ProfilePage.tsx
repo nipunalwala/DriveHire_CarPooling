@@ -75,6 +75,15 @@ export function ProfilePage() {
             {notice}
           </p>
         )}
+        <section className="profile-section">
+          <h2>Your journeys</h2>
+          <p>
+            <Link to="/drivers">Find a driver</Link>
+          </p>
+          <p>
+            <Link to="/app/bookings">View your bookings</Link>
+          </p>
+        </section>
         <form onSubmit={(event) => void save(event)} noValidate aria-label="Edit profile">
           <h2>Personal details</h2>
           <Field
@@ -121,6 +130,8 @@ export function ProfilePage() {
               <Link to="/driver/qualification">Complete driver qualification</Link>
               <br />
               <Link to="/driver/availability">Manage your driving schedule</Link>
+              <br />
+              <Link to="/app/driver/bookings">Review driver requests</Link>
             </p>
           )}
         </section>
@@ -132,6 +143,8 @@ export function ProfilePage() {
             </p>
             <p>
               <Link to="/admin/users">Manage user accounts</Link>
+              <br />
+              <Link to="/admin/operations">Inspect bookings and trips</Link>
             </p>
           </section>
         )}

@@ -6,6 +6,7 @@ import { parseEnv } from './config/env.js';
 import { createLogger, safeErrorMetadata } from './config/logger.js';
 import { createAuthEmailDelivery } from './modules/accounts/email-jobs.js';
 import { createProvidersService } from './modules/providers/service.js';
+import { expireBookings } from './modules/bookings/jobs.js';
 import { createDatabase, updateHeartbeat } from './runtime/database.js';
 import { createPrisma } from './runtime/prisma.js';
 import { runWorker } from './runtime/run-worker.js';
@@ -40,6 +41,7 @@ try {
       await providers.scanPendingDocuments(controller.signal);
       await providers.cleanupOrphanUploads();
       await providers.expireQualifications();
+      await expireBookings(new Date(), prisma);
     },
     onError: (error) => {
       logger.error(safeErrorMetadata(error), 'Worker dependency unavailable');

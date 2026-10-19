@@ -1,10 +1,20 @@
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { Pool } from 'pg';
+import { Client, Pool } from 'pg';
 import { requireTestDatabaseUrl } from '../runtime/test-database.js';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Cross-process fixture-serialization mutex. A dedicated session-scoped
+ * advisory lock (0x4452495645485f35, unrelated to Prisma's migration-engine
+ * advisory key) serializes the entire withTestDatabase lifecycle so two
+ * fixtures can never interleave their GRANT/TRUNCATE/migration statements,
+ * which otherwise raise "tuple concurrently updated"/deadlock errors and can
+ * delete another callback's rows.
+ */
+const FIXTURE_SERIALIZATION_LOCK_KEY = '4923077977547759413';
 
 export interface DatabaseFixture {
   migrationPool: Pool;
@@ -146,20 +156,39 @@ export async function dropTestSchema(migrationPool: Pool): Promise<void> {
 }
 
 /**
- * Deploy reviewed migrations with the migration identity, verify the
- * dedicated target, then run the callback with both pools.
- * Never touches development or retired databases (guard fails closed).
+ * Verify the dedicated target, take the cross-process serialization lock,
+ * deploy reviewed migrations with the migration identity, then run the
+ * callback with both pools. Never touches development or retired databases
+ * (guard fails closed); the lock is released in `finally`.
  */
 export async function withTestDatabase<T>(
   run: (fixture: DatabaseFixture) => Promise<T>,
 ): Promise<T> {
   const runtimeUrl = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL);
   const migrationUrl = requireTestDatabaseUrl(process.env.TEST_MIGRATION_DATABASE_URL);
+  // The mutex owns a dedicated connection. It must stay independent of the
+  // migration/runtime pools: reusing the sole client of a max:1 pool would
+  // make the reset wait on the very lock its own session holds (deadlock).
+  const lockClient = new Client({ connectionString: migrationUrl });
+  lockClient.on('error', () => {});
   const migrationPool = new Pool({ connectionString: migrationUrl, max: 2 });
   migrationPool.on('error', () => {});
   const runtimePool = new Pool({ connectionString: runtimeUrl, max: 4 });
   runtimePool.on('error', () => {});
+  let lockHeld = false;
   try {
+    await lockClient.connect();
+    // Validate the actual dedicated target on the lock connection before any
+    // mutation (deploy/grants/truncate) and before taking the lock.
+    const target = await lockClient.query<{ db: string }>('SELECT current_database() AS db');
+    if (target.rows[0]?.db !== 'drivehire_test') {
+      throw new Error('Refusing fixture outside the dedicated drivehire_test database');
+    }
+    await lockClient.query('SELECT pg_advisory_lock($1::bigint) AS locked', [
+      FIXTURE_SERIALIZATION_LOCK_KEY,
+    ]);
+    lockHeld = true;
+    await assertDedicatedTarget(migrationPool, runtimePool);
     await deployTestMigrations(migrationUrl);
     const sentinel = await migrationPool.query<{
       cities: string | null;
@@ -175,7 +204,6 @@ export async function withTestDatabase<T>(
       );
       await deployTestMigrations(migrationUrl);
     }
-    await assertDedicatedTarget(migrationPool, runtimePool);
     await applyRuntimeGrants(migrationPool, runtimeRoleOf(runtimeUrl));
     const reset = async (): Promise<void> => {
       await assertDedicatedTarget(migrationPool, runtimePool);
@@ -188,6 +216,14 @@ export async function withTestDatabase<T>(
     await reset();
     return await run({ migrationPool, runtimePool, reset });
   } finally {
+    if (lockHeld) {
+      await lockClient
+        .query('SELECT pg_advisory_unlock($1::bigint) AS unlocked', [
+          FIXTURE_SERIALIZATION_LOCK_KEY,
+        ])
+        .catch(() => {});
+    }
+    await lockClient.end().catch(() => {});
     await runtimePool.end().catch(() => {});
     await migrationPool.end().catch(() => {});
   }

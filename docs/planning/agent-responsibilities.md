@@ -10,3 +10,8 @@ Owner-approved on 2026-10-18. This file is persistent project memory for all cod
 - ImageGen owns original raster illustrations and editorial service imagery. Define placement, composition and responsive crops with Impeccable before generation. Generate and commit the actual optimized assets and provenance during milestone07, following docs/design/image-assets.md. Do not claim assets exist before generation or use generated provider identities, real listing photos, testimonials or evidence.
 - Milestone08 verifies the integrated interface, accessibility, responsive layouts, image performance and backend/security/restore evidence. Each agent records actual results and blockers; unavailable checks are never passes.
 - Commits use the repository's verified owner identity, Nipun Alwala (`nipunalwala`). Never expose credentials in code, logs, prompts or handoffs.
+
+Owner override on 2026-10-19: skip OpenCode for all remaining phases. Codex now
+owns backend, contracts, tests and frontend directly. Retain Impeccable for UI,
+independent phase review, verification, main/owner commits, phase pushes and CI
+inspection. This supersedes the earlier OpenCode/free-model ownership split.
