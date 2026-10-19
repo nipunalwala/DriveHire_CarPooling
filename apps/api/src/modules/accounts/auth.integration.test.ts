@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, randomInt } from 'node:crypto';
 import { loadEnvFile } from 'node:process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { hash as argon2Hash } from '@node-rs/argon2';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -128,6 +129,33 @@ async function login(email: string): Promise<Account> {
   const accessToken = response.body?.data?.accessToken;
   if (typeof accessToken !== 'string') throw new Error('Login returned no access token');
   return { email, accessToken, refreshToken: refreshCookieFrom(response) };
+}
+
+/**
+ * Deterministic lock-order harness. Blocks at least `expected` backends on the
+ * `users` row lock. Tests hold that row from a separate transaction so a
+ * challenge-first route closes a cycle against a user-first route, which
+ * Postgres resolves with 40P01 (surfaced as an unhandled 500) unless every auth
+ * flow acquires the account lock before any challenge lock.
+ */
+async function waitForUserLockWaiters(
+  pool: import('pg').Pool,
+  expected: number,
+  timeoutMs = 5000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const result = await pool.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n
+       FROM pg_stat_activity
+       WHERE wait_event_type = 'Lock' AND query ILIKE '%users%'`,
+    );
+    if ((result.rows[0]?.n ?? 0) >= expected) return;
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${expected} lock waiter(s) on users`);
+    }
+    await delay(25);
+  }
 }
 
 describe('Milestone03 Task1: account contracts and current authentication', () => {
@@ -767,6 +795,120 @@ describe('Milestone03 Task1: account contracts and current authentication', () =
         [userId],
       );
       expect(rows.rows.map((row) => Number(row.aggregate_version))).toEqual([1, 2]);
+    });
+  });
+
+  it('verify_and_resend_share_account_then_challenge_lock_order', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'lockorder-verify@example.com';
+      const app = buildApp();
+      const registered = await request(app)
+        .post('/api/v1/auth/register')
+        .set('Origin', APP_ORIGIN)
+        .send({ displayName: 'Lock Order Verify', email, password: 'CorrectHorse1!' });
+      expect(registered.status).toBe(202);
+      const userRow = await migrationPool.query<{ id: string }>(
+        'SELECT id FROM users WHERE email=$1',
+        [email],
+      );
+      const userId = userRow.rows[0]?.id as string;
+      // Fix the verification code and clear the resend cooldown so both routes
+      // take their challenge-mutation path instead of a generic early return.
+      await migrationPool.query(
+        `UPDATE auth_challenges SET secret_hash=$1, resend_after = now() - interval '1 minute'
+         WHERE user_id=$2 AND purpose='VERIFY_EMAIL' AND consumed_at IS NULL`,
+        [hmacHex('otp', '123456'), userId],
+      );
+
+      const holder = await migrationPool.connect();
+      try {
+        await holder.query('BEGIN');
+        await holder.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId]);
+        // The user-first route queues on the held account row.
+        // .then() dispatches the supertest request immediately so it is
+        // genuinely in flight while the holder keeps the account row locked.
+        const resendPending = request(app)
+          .post('/api/v1/auth/resend-otp')
+          .set('Origin', APP_ORIGIN)
+          .send({ email })
+          .then((response) => response);
+        await waitForUserLockWaiters(migrationPool, 1);
+        // A challenge-first route would lock the challenge here and then wait on
+        // the same account row, closing the deadlock cycle.
+        const verifyPending = request(app)
+          .post('/api/v1/auth/verify-email')
+          .send({ email, code: '123456' })
+          .then((response) => response);
+        await waitForUserLockWaiters(migrationPool, 2);
+
+        await holder.query('COMMIT');
+        const [resend, verify] = await Promise.all([resendPending, verifyPending]);
+        // The cross-route race must resolve to domain outcomes, never an
+        // unhandled deadlock 500.
+        expect([resend.status, verify.status]).not.toContain(500);
+        expect(resend.status).toBe(202);
+        expect([200, 400]).toContain(verify.status);
+        const state = await migrationPool.query<{ email_verified_at: string | null }>(
+          'SELECT email_verified_at FROM users WHERE id=$1',
+          [userId],
+        );
+        if (verify.status === 200) {
+          expect(state.rows[0]?.email_verified_at).not.toBeNull();
+        } else {
+          expect(state.rows[0]?.email_verified_at).toBeNull();
+        }
+      } finally {
+        holder.release();
+      }
+    });
+  });
+
+  it('forgot_and_reset_share_account_then_challenge_lock_order', async () => {
+    await withTestDatabase(async ({ migrationPool }) => {
+      const email = 'lockorder-reset@example.com';
+      await registerAndVerify(email);
+      const userRow = await migrationPool.query<{ id: string }>(
+        'SELECT id FROM users WHERE email=$1',
+        [email],
+      );
+      const userId = userRow.rows[0]?.id as string;
+      const rawToken = randomBytes(32).toString('base64url');
+      await migrationPool.query(
+        `INSERT INTO auth_challenges(user_id, purpose, secret_hash, expires_at, resend_after)
+         VALUES ($1, 'RESET_PASSWORD', $2, now() + interval '15 minutes', now())`,
+        [userId, hmacHex('reset', rawToken)],
+      );
+      const app = buildApp();
+
+      const holder = await migrationPool.connect();
+      try {
+        await holder.query('BEGIN');
+        await holder.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId]);
+        // The user-first route queues on the held account row.
+        const forgotPending = request(app)
+          .post('/api/v1/auth/forgot-password')
+          .set('Origin', APP_ORIGIN)
+          .send({ email })
+          .then((response) => response);
+        await waitForUserLockWaiters(migrationPool, 1);
+        // The challenge-first reset would consume the live reset challenge and
+        // then wait on the same account row, closing the deadlock cycle.
+        const resetPending = request(app)
+          .post('/api/v1/auth/reset-password')
+          .send({ token: rawToken, newPassword: 'LockOrderHorse9!' })
+          .then((response) => response);
+        await waitForUserLockWaiters(migrationPool, 2);
+
+        await holder.query('COMMIT');
+        const [forgot, reset] = await Promise.all([forgotPending, resetPending]);
+        expect([forgot.status, reset.status]).not.toContain(500);
+        expect(forgot.status).toBe(202);
+        // The newer forgot request invalidates the prior reset challenge, so the
+        // reset loses cleanly with a 400 instead of a deadlock.
+        expect([200, 400]).toContain(reset.status);
+      } finally {
+        holder.release();
+      }
     });
   });
 });

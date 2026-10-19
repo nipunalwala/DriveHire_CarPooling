@@ -1,5 +1,5 @@
-import { connect as netConnect, type Socket } from 'node:net';
-import { connect as tlsConnect } from 'node:tls';
+import { connect as netConnect, isIP, type Socket } from 'node:net';
+import { connect as tlsConnect, type ConnectionOptions } from 'node:tls';
 import type { Config } from '../config/env.js';
 import type { MailAdapter } from '../ports.js';
 
@@ -127,14 +127,26 @@ class SmtpSession {
   }
 }
 
+/**
+ * Certificate validation is always enforced. An explicit test/private CA is an
+ * additional trust anchor only; it never relaxes `rejectUnauthorized`. RFC 6066
+ * forbids an IP literal as SNI, so an IP host is verified through its IP SAN
+ * instead of being passed as `servername`.
+ */
+function tlsOptions(config: Config): ConnectionOptions {
+  return {
+    servername: isIP(config.smtp.host) === 0 ? config.smtp.host : undefined,
+    rejectUnauthorized: true,
+    ...(config.smtp.ca ? { ca: config.smtp.ca } : {}),
+  };
+}
+
 function openSocket(config: Config): Promise<Socket> {
   const { host, port, tls } = config.smtp;
   return new Promise((resolve, reject) => {
     const fail = () => reject(new SmtpError('SMTP_CONNECT', 'SMTP connection failed'));
     if (tls === 'implicit') {
-      const socket = tlsConnect({ host, port, servername: host, rejectUnauthorized: true }, () =>
-        resolve(socket),
-      );
+      const socket = tlsConnect({ host, port, ...tlsOptions(config) }, () => resolve(socket));
       socket.setTimeout(RESPONSE_TIMEOUT_MS, () => socket.destroy());
       socket.once('error', fail);
       return;
@@ -145,11 +157,9 @@ function openSocket(config: Config): Promise<Socket> {
   });
 }
 
-function upgradeToTls(socket: Socket, host: string): Promise<Socket> {
+function upgradeToTls(socket: Socket, config: Config): Promise<Socket> {
   return new Promise((resolve, reject) => {
-    const secure = tlsConnect({ socket, servername: host, rejectUnauthorized: true }, () =>
-      resolve(secure),
-    );
+    const secure = tlsConnect({ socket, ...tlsOptions(config) }, () => resolve(secure));
     secure.once('error', () => reject(new SmtpError('SMTP_TLS', 'SMTP TLS negotiation failed')));
   });
 }
@@ -195,7 +205,7 @@ async function sendSmtp(
     if (config.smtp.tls === 'starttls') {
       await session.command('STARTTLS');
       session.detach();
-      socket = await upgradeToTls(socket, config.smtp.host);
+      socket = await upgradeToTls(socket, config);
       session = new SmtpSession(socket);
       await session.command(`EHLO ${CLIENT_NAME}`);
     }

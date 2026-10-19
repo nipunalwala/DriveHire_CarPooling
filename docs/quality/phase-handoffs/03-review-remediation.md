@@ -144,3 +144,112 @@ someone who closed registration before verifying their email.
 The review was static frontend-only; backend final review and post-fix browser
 verification remain required before Phase03 acceptance. No push or phase completion
 claim is made by this checkpoint.
+
+## 2026-10-19 backend remediation of the independent review Important findings
+
+Scope: `apps/api/src/modules/accounts/**`, `apps/api/src/adapters/smtp-mail.ts`,
+`apps/api/src/config/env.ts`, `apps/api/src/test/**` and this record only. No
+frontend, E2E, OpenAPI/spec, Phase04 file, dependency pin or lockfile was touched;
+the concurrent Phase04 cities/Sharp/admin/provider changes in the working tree were
+left exactly as found. No commit, push, merge or deploy was performed.
+
+Isolation: the dedicated integration stack on `55433` (compose project
+`drivehire-test`, SMTP `11025`, Mailpit HTTP `18025`) via the committed `.env`
+`TEST_DATABASE_URL`/`TEST_MIGRATION_DATABASE_URL`. The Phase04 `55433` target was
+never reset by hand; resets happen only through the reviewed `withTestDatabase`
+fixture. No development/retired data or volume was touched.
+
+### I1. Cross-route row-lock inversion -> deadlock/500 (fixed, RED -> GREEN)
+
+Confirmed the reported inversion: `verifyEmail` locked the challenge then the
+account, while `resendOtp`/`forgotPassword` locked the account then the challenge,
+and `resetPassword` locked the challenge then the account. Two deterministic
+regressions were added to `auth.integration.test.ts`, each holding the account row
+from a separate transaction, queueing the account-first route and the
+challenge-first route on that row, then releasing it so Postgres forms the cycle:
+
+- `verify_and_resend_share_account_then_challenge_lock_order`
+- `forgot_and_reset_share_account_then_challenge_lock_order`
+
+Observed RED before the fix (same command, `-t challenge_lock_order`):
+
+```
+Tests  2 failed (2)
+AssertionError: expected [ 202, 500 ] to not include 500   (both cases)
+```
+
+i.e. the account-first route returned `202` and the challenge-first route returned
+an unhandled `500` from the Postgres `40P01` deadlock.
+
+Fix in `service.ts`: every flow now takes the account lock before any challenge
+lock. `verifyEmail` locks the account by email first, then the live challenge
+`FOR UPDATE OF c`; `resetPassword` reads the token's account, locks the account,
+then re-reads and revalidates the challenge `FOR UPDATE` under that lock before
+consuming it. Single-use, attempt accounting, session revocation and the
+transactional outbox semantics are unchanged.
+
+Observed GREEN after the fix: the two regressions pass, and the combined accounts
+suites pass (`auth.integration.test.ts` + `email.integration.test.ts` ->
+`Test Files 2 passed`, `Tests 28 passed`). The pre-existing single-use, refresh
+replay, suspended-account and login/reset serialization regressions stayed green.
+
+### I2. STARTTLS/implicit SMTP coverage gap (fixtures added; GREEN, no defect found)
+
+The secure transports required by `parseEnv` for staging/production had no test
+coverage. A real local TLS SMTP fixture was added and the secure paths are now
+exercised end to end:
+
+- `apps/api/src/test/fixtures/tls/{ca.pem,server-cert.pem,server-key.pem}`:
+  test-only root CA and a `localhost`/`127.0.0.1` server certificate.
+- `apps/api/src/test/tls-smtp-server.ts`: minimal in-process SMTP server with
+  STARTTLS upgrade and implicit-TLS listeners; records commands, delivered
+  messages and TLS counters.
+- `apps/api/src/adapters/smtp-mail.test.ts`:
+  `starttls_upgrades_authenticates_and_delivers` (asserts the upgrade happened,
+  a second EHLO over TLS, AUTH PLAIN only after STARTTLS, and delivery with the
+  server requiring auth); `implicit_tls_authenticates_and_delivers`;
+  `implicit_tls_rejects_untrusted_certificate_without_delivery`;
+  `starttls_rejects_when_the_upgrade_handshake_fails`;
+  `transport_connection_failure_is_reported_as_smtp_error`.
+
+Supporting change: `SMTP_CA` is an optional PEM trust anchor threaded to the TLS
+socket (`.env.example` documents it). `rejectUnauthorized` stays `true` in all
+paths; the CA is an added anchor only, and an IP host is no longer passed as an
+illegal SNI `servername` (it is verified through its IP SAN). The fixture CA is
+supplied only by tests and is never loaded in production.
+
+Result: the adapter's secure transports worked as implemented; this was an
+acceptance gap, not a demonstrated defect, so this record claims GREEN coverage
+only. The first harness run failed because the fixture returned numeric counters by
+value; they were changed to getters, after which all five tests pass. No production
+certificate validation was disabled and no paid/network SMTP was used.
+
+### Verification observed
+
+- `npm run test:integration -- apps/api/src/modules/accounts/auth.integration.test.ts apps/api/src/modules/accounts/email.integration.test.ts`
+  -> `Test Files 2 passed (2)`, `Tests 28 passed (28)`.
+- `npm run test:unit -- apps/api/src/adapters/smtp-mail.test.ts` -> `5 passed (5)`.
+- `npm test` -> 14 unit files / 53 tests and 1 contract test passed, exit 0.
+- `npm run typecheck` -> exit 0. `npm run lint` -> exit 0 (boundaries verified).
+  `npm run build` -> contracts/api/web built, exit 0.
+- `npx prettier --check` on every owned file -> "All matched files use Prettier
+  code style!".
+
+### Deferred (unchanged; not addressed by this remediation)
+
+The review's Minors M1–M8 and acceptance gaps G1–G3/G5 remain deferred; G4
+(STARTTLS/implicit) is now covered above. No unrelated change was made for any
+minor. The `SameSite` OpenAPI wording (M1), unknown-enum `403` (M2), swallowed
+attempt assertions (M3), timing/enumeration notes (M4/M5), proxy-hop config (M6),
+per-process outbox key foot-gun (M7) and reset status re-check (M8) are recorded,
+not fixed, per the instruction to fix Important findings only.
+
+### Limitations
+
+- `docs:check` was not run: `python` is absent from this shell's PATH and no
+  OpenAPI/spec file was changed by this work.
+- Whole-repository `npm run format:check` was not run (concurrent Phase04 files are
+  dirty/unowned); only the owned files were checked and are Prettier-clean.
+- This is backend-only evidence. Whole-phase acceptance, the Codex frontend E2E
+  and the final `03-accounts.md` archive remain outstanding. No phase completion,
+  push or production claim is made.

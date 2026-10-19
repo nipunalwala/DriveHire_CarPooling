@@ -339,18 +339,24 @@ export function createAccountsService({
       const payload = parseOrBadRequest(OtpInputSchema, input);
       const email = normalizeEmail(payload.email);
       const expected = Buffer.from(hmacHex('otp', payload.code), 'hex');
-      // Lock the live challenge row so a valid code can be redeemed exactly once
-      // even when several requests arrive concurrently; the transaction commits
-      // or rolls back the attempt accounting and the single consumption together.
+      // Every auth flow that touches both rows acquires the account lock before
+      // any challenge lock. Locking the account first here (as resend/forgot
+      // already do) removes the cross-route lock inversion that could deadlock
+      // two concurrent requests into an unhandled 500. The live challenge is
+      // then read under that lock, so the attempt accounting and single
+      // consumption still commit or roll back together.
       const outcome = await prisma.$transaction(async (tx) => {
+        const lockedUser = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id FROM users WHERE email = ${email} FOR UPDATE`;
+        const userId = lockedUser[0]?.id;
+        if (!userId) return 'INVALID' as const;
         const challenge = (
           await tx.$queryRaw<
             Array<{ id: string; userId: string; attempts: number; secretHash: string }>
           >`
             SELECT c.id, c.user_id AS "userId", c.attempts, c.secret_hash AS "secretHash"
             FROM auth_challenges c
-            JOIN users u ON u.id = c.user_id
-            WHERE u.email = ${email}
+            WHERE c.user_id = ${userId}
               AND c.purpose = 'VERIFY_EMAIL'
               AND c.consumed_at IS NULL
               AND c.invalidated_at IS NULL
@@ -683,17 +689,33 @@ export function createAccountsService({
       const passwordHashed = await passwordHash(payload.newPassword);
       // The one-use consume, password change and session revocation are a
       // single transaction so a crash can never consume the token without
-      // applying the reset (or apply it without revoking sessions).
+      // applying the reset (or apply it without revoking sessions). The account
+      // lock is taken before the challenge lock (matching login/resend/forgot),
+      // and the challenge is then re-read under it so a concurrent
+      // forgot/reset can neither deadlock nor double-consume.
       await prisma.$transaction(async (tx) => {
-        const challenge = await tx.authChallenge.findFirst({
+        const candidate = await tx.authChallenge.findFirst({
           where: {
             purpose: 'RESET_PASSWORD',
             secretHash: hmacHex('reset', payload.token),
             consumedAt: null,
             invalidatedAt: null,
           },
-          select: { id: true, userId: true, expiresAt: true },
+          select: { id: true, userId: true },
         });
+        if (!candidate) throw badRequest('Reset link is invalid or expired');
+        // Same account-row lock login uses so a stale-password login cannot
+        // commit a session after this reset and then refresh.
+        await tx.$queryRaw`SELECT id FROM users WHERE id = ${candidate.userId} FOR UPDATE`;
+        const challenge = (
+          await tx.$queryRaw<Array<{ id: string; expiresAt: Date }>>`
+            SELECT id, expires_at AS "expiresAt"
+            FROM auth_challenges
+            WHERE id = ${candidate.id}
+              AND consumed_at IS NULL
+              AND invalidated_at IS NULL
+            FOR UPDATE`
+        )?.at(0);
         if (!challenge || challenge.expiresAt.getTime() <= Date.now()) {
           throw badRequest('Reset link is invalid or expired');
         }
@@ -702,15 +724,12 @@ export function createAccountsService({
           data: { consumedAt: new Date() },
         });
         if (consumed.count === 0) throw badRequest('Reset link is invalid or expired');
-        // Take the same account-row lock login uses so a stale-password login
-        // cannot commit a session after this reset and then refresh.
-        await tx.$queryRaw`SELECT id FROM users WHERE id = ${challenge.userId} FOR UPDATE`;
         await tx.user.update({
-          where: { id: challenge.userId },
+          where: { id: candidate.userId },
           data: { passwordHash: passwordHashed },
         });
         // Every existing access/refresh credential stops being valid.
-        await revokeAllSessions(tx, challenge.userId, 'PASSWORD_RESET');
+        await revokeAllSessions(tx, candidate.userId, 'PASSWORD_RESET');
       });
       return { acknowledged: true };
     },

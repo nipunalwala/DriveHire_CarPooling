@@ -25,6 +25,9 @@ const schema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_TLS: z.enum(['none', 'starttls', 'implicit']).default('none'),
+  // Optional PEM trust anchor for a private SMTP certificate authority. Unset
+  // means the system trust store; certificate validation is never disabled.
+  SMTP_CA: z.string().optional(),
   MAIL_FROM: z.email().default('no-reply@drivehire.local'),
   SCAN_HOST: z.string().min(1).default('127.0.0.1'),
   SCAN_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
@@ -101,6 +104,7 @@ export function parseEnv(input: Record<string, string | undefined>) {
       user: env.SMTP_USER,
       password: env.SMTP_PASSWORD,
       tls: env.SMTP_TLS,
+      ca: env.SMTP_CA,
       from: env.MAIL_FROM,
     },
     scan: { host: env.SCAN_HOST, port: env.SCAN_PORT },
