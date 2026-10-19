@@ -1,8 +1,12 @@
 // Private-evidence validation: magic-byte allowlist (JPEG/PNG/WebP/PDF),
-// image metadata stripping and canonical content types. Everything runs on an
-// in-memory buffer bounded by the 5 MiB upload limit; no external IO.
+// bounded image decode/re-encode through libvips (sharp) and canonical content
+// types. Everything runs on an in-memory buffer already bounded by the 5 MiB
+// upload limit; no external IO.
+
+import sharp from 'sharp';
 
 export type EvidenceType = 'image/jpeg' | 'image/png' | 'image/webp' | 'application/pdf';
+type ImageEvidenceType = Exclude<EvidenceType, 'application/pdf'>;
 
 export const ALLOWED_EVIDENCE_TYPES: readonly EvidenceType[] = [
   'image/jpeg',
@@ -10,6 +14,13 @@ export const ALLOWED_EVIDENCE_TYPES: readonly EvidenceType[] = [
   'image/webp',
   'application/pdf',
 ];
+
+/**
+ * Bounded decode budget: an image whose declared geometry exceeds this many
+ * pixels is refused before libvips allocates a full raster, defeating
+ * decompression bombs while still accepting normal phone/document photos.
+ */
+export const MAX_PRIVATE_IMAGE_PIXELS = 30_000_000;
 
 export class EvidenceTypeError extends Error {
   constructor(message = 'Unsupported file type') {
@@ -51,74 +62,29 @@ function normalizeDeclared(contentType: string): string {
   return contentType.split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
-const PNG_METADATA_CHUNKS = new Set(['tEXt', 'zTXt', 'iTXt', 'eXIf', 'tIME']);
-
-/** Keep the PNG signature and only drop known metadata chunks. */
-function stripPngMetadata(bytes: Buffer): Buffer {
-  const signature = bytes.subarray(0, 8);
-  const output: Buffer[] = [signature];
-  let offset = 8;
-  while (offset + 8 <= bytes.length) {
-    const length = bytes.readUInt32BE(offset);
-    const type = bytes.toString('ascii', offset + 4, offset + 8);
-    const end = offset + 12 + length;
-    if (end > bytes.length || length > bytes.length) break;
-    if (!PNG_METADATA_CHUNKS.has(type)) output.push(bytes.subarray(offset, end));
-    if (type === 'IEND') break;
-    offset = end;
+/**
+ * Fully decode the image and re-encode only the pixel raster in the same
+ * container format. Sharp drops all metadata unless explicitly preserved, so
+ * EXIF/GPS/XMP/ICC probe data, embedded payloads and polyglot trailers after the
+ * image stream are discarded. `failOn: 'warning'` plus `limitInputPixels` reject
+ * truncated/corrupt images and decompression bombs instead of storing them.
+ */
+async function reencodeImage(bytes: Buffer, type: ImageEvidenceType): Promise<Buffer> {
+  const pipeline = sharp(bytes, {
+    failOn: 'warning',
+    limitInputPixels: MAX_PRIVATE_IMAGE_PIXELS,
+    animated: false,
+  })
+    // Bake EXIF orientation into the pixels before metadata is stripped so a
+    // phone photo does not silently end up sideways.
+    .rotate();
+  try {
+    if (type === 'image/jpeg') return await pipeline.jpeg().toBuffer();
+    if (type === 'image/png') return await pipeline.png().toBuffer();
+    return await pipeline.webp().toBuffer();
+  } catch {
+    throw new EvidenceTypeError('Image could not be decoded');
   }
-  return Buffer.concat(output);
-}
-
-/** Drop JPEG APPn/COM marker segments up to the entropy-coded scan. */
-function stripJpegMetadata(bytes: Buffer): Buffer {
-  const output: Buffer[] = [bytes.subarray(0, 2)];
-  let offset = 2;
-  while (offset + 4 <= bytes.length) {
-    if (bytes[offset] !== 0xff) break;
-    const marker = bytes[offset + 1] as number;
-    if (marker === 0xda) {
-      // Start of scan: copy the remainder verbatim (entropy data + EOI).
-      output.push(bytes.subarray(offset));
-      offset = bytes.length;
-      break;
-    }
-    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
-      output.push(bytes.subarray(offset, offset + 2));
-      offset += 2;
-      continue;
-    }
-    if (offset + 4 > bytes.length) break;
-    const length = bytes.readUInt16BE(offset + 2);
-    const end = offset + 2 + length;
-    if (length < 2 || end > bytes.length) break;
-    const isApp = marker >= 0xe0 && marker <= 0xef;
-    if (!isApp && marker !== 0xfe) output.push(bytes.subarray(offset, end));
-    offset = end;
-  }
-  if (offset < bytes.length) output.push(bytes.subarray(offset));
-  return Buffer.concat(output);
-}
-
-/** Drop WebP EXIF/XMP chunks and recompute the RIFF size. */
-function stripWebpMetadata(bytes: Buffer): Buffer {
-  const chunks: Buffer[] = [];
-  let offset = 12;
-  while (offset + 8 <= bytes.length) {
-    const fourcc = bytes.toString('ascii', offset, offset + 4);
-    const length = bytes.readUInt32LE(offset + 4);
-    const padded = length + (length % 2);
-    const end = offset + 8 + padded;
-    if (end > bytes.length) break;
-    if (fourcc !== 'EXIF' && fourcc !== 'XMP ') chunks.push(bytes.subarray(offset, end));
-    offset = end;
-  }
-  const body = Buffer.concat(chunks);
-  const header = Buffer.alloc(12);
-  header.write('RIFF', 0, 'ascii');
-  header.writeUInt32LE(4 + body.length, 4);
-  header.write('WEBP', 8, 'ascii');
-  return Buffer.concat([header, body]);
 }
 
 export interface SanitizedEvidence {
@@ -127,17 +93,20 @@ export interface SanitizedEvidence {
 }
 
 /**
- * Validate declared vs. real magic type and return metadata-stripped bytes.
- * Throws `EvidenceTypeError` (mapped to 415) on any mismatch or disallowed type.
+ * Validate declared vs. real magic type and return canonical bytes: images are
+ * decoded and re-encoded (metadata-stripped); PDFs are passed through untouched
+ * for the real scanner to inspect. Throws `EvidenceTypeError` (mapped to 415) on
+ * any mismatch, disallowed type, corrupt image or decompression bomb.
  */
-export function sanitizeEvidence(declaredContentType: string, bytes: Buffer): SanitizedEvidence {
+export async function sanitizeEvidence(
+  declaredContentType: string,
+  bytes: Buffer,
+): Promise<SanitizedEvidence> {
   const detected = detectEvidenceType(bytes);
   if (!detected) throw new EvidenceTypeError();
   const declared = normalizeDeclared(declaredContentType);
   if (declared && declared !== detected)
     throw new EvidenceTypeError('File content does not match its declared type');
-  if (detected === 'image/png') return { bytes: stripPngMetadata(bytes), contentType: detected };
-  if (detected === 'image/jpeg') return { bytes: stripJpegMetadata(bytes), contentType: detected };
-  if (detected === 'image/webp') return { bytes: stripWebpMetadata(bytes), contentType: detected };
-  return { bytes, contentType: detected };
+  if (detected === 'application/pdf') return { bytes, contentType: detected };
+  return { bytes: await reencodeImage(bytes, detected), contentType: detected };
 }

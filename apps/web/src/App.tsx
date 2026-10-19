@@ -10,6 +10,10 @@ import { ResetPasswordPage } from './features/auth/ResetPasswordPage.js';
 import { ProfilePage } from './features/profile/ProfilePage.js';
 import { DriverAvailabilityPage } from './features/providers/DriverAvailabilityPage.js';
 
+import { VehiclesPage } from './features/providers/VehiclesPage.js';
+import { DriverQualificationPage } from './features/providers/DriverQualificationPage.js';
+import { VerificationPage } from './features/admin/verification/VerificationPage.js';
+import { UsersPage } from './features/admin/users/UsersPage.js';
 function Shell() {
   const { user } = useAuth();
   const location = useLocation();
@@ -75,6 +79,38 @@ function Shell() {
                   DriveHire.
                 </p>
               </section>
+            }
+          />
+          <Route
+            path="/vehicles"
+            element={
+              <ProtectedRoute>
+                <VehiclesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/driver/qualification"
+            element={
+              <ProtectedRoute>
+                <DriverQualificationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/verifications"
+            element={
+              <ProtectedRoute>
+                <VerificationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute>
+                <UsersPage />
+              </ProtectedRoute>
             }
           />
           <Route path="/login" element={<LoginPage />} />

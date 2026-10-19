@@ -4,9 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadEnvFile } from 'node:process';
 import { hash as argon2Hash } from '@node-rs/argon2';
+import { Client } from 'pg';
+import sharp from 'sharp';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../app.js';
+import { createProvidersService } from './service.js';
 import { createClamAvScan } from '../../adapters/clamav-scan.js';
 import { createPrivateStorage, toAsyncIterable } from '../../adapters/private-storage.js';
 import { parseEnv } from '../../config/env.js';
@@ -78,31 +81,32 @@ const CLEAN_PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n
 const MALWARE_MARKER = 'DRIVEHIRE-MALWARE-MARKER';
 const MALWARE_PDF = Buffer.from(`%PDF-1.4\n${MALWARE_MARKER}\n%%EOF\n`, 'ascii');
 
-function chunk(type: string, data: Buffer): Buffer {
-  const header = Buffer.alloc(8);
-  header.writeUInt32BE(data.length, 0);
-  header.write(type, 4, 'ascii');
-  return Buffer.concat([header, data, Buffer.alloc(4)]);
-}
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-/** Real PNG structure carrying a tEXt metadata chunk with a secret marker. */
-const PNG_WITH_METADATA = Buffer.concat([
-  PNG_SIGNATURE,
-  chunk('IHDR', Buffer.alloc(13)),
-  chunk('tEXt', Buffer.from('Author\0EVIDENCE-SECRET-MARKER', 'latin1')),
-  chunk('IDAT', Buffer.from([0x78, 0x9c, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01])),
-  chunk('IEND', Buffer.alloc(0)),
-]);
-/** Real JPEG structure carrying an APP1/EXIF segment with a secret marker. */
-const JPEG_WITH_METADATA = Buffer.concat([
-  Buffer.from([0xff, 0xd8]),
-  Buffer.from([0xff, 0xe1, 0x00, 0x10]),
-  Buffer.from('EXIF-SECRET-42', 'latin1'),
-  Buffer.from([0xff, 0xda, 0x00, 0x04]),
-  Buffer.from([0x00, 0x11, 0x22, 0x33]),
-  Buffer.from([0xff, 0xd9]),
-]);
-const SECRET_MARKER = Buffer.from('SECRET');
+
+// Decoder-valid fixtures are generated at test time with real pixel data plus a
+// known EXIF marker. A hand-built synthetic PNG/JPEG is not decoder-valid, so it
+// could not prove the decode/re-encode or metadata-strip behavior at all.
+const EVIDENCE_METADATA_MARKER = 'EVIDENCE-SECRET-MARKER';
+const POLYGLOT_TRAILER = Buffer.from('<script id="polyglot">alert(1)</script>', 'ascii');
+
+async function imageWithMetadata(
+  format: 'png' | 'jpeg' | 'webp',
+  options: { width?: number; height?: number; marker?: string } = {},
+): Promise<Buffer> {
+  const pipeline = sharp({
+    create: {
+      width: options.width ?? 24,
+      height: options.height ?? 16,
+      channels: 3,
+      background: { r: 10, g: 120, b: 200 },
+    },
+  }).withMetadata({
+    exif: { IFD0: { ImageDescription: options.marker ?? EVIDENCE_METADATA_MARKER } },
+  });
+  if (format === 'png') return pipeline.png().toBuffer();
+  if (format === 'jpeg') return pipeline.jpeg().toBuffer();
+  return pipeline.webp().toBuffer();
+}
 
 function binaryParser(
   res: NodeJS.ReadableStream,
@@ -119,6 +123,7 @@ function auth(app: ReturnType<typeof createApp>, token: string) {
   return {
     get: (path: string) => base.get(path).set('Authorization', bearer),
     post: (path: string) => base.post(path).set('Authorization', bearer),
+    patch: (path: string) => base.patch(path).set('Authorization', bearer),
     put: (path: string) => base.put(path).set('Authorization', bearer),
     delete: (path: string) => base.delete(path).set('Authorization', bearer),
   };
@@ -211,6 +216,49 @@ function vehicleInput(cityId: string, registrationNumber: string, version?: numb
   };
 }
 
+/** Wait until `expected` backends are blocked on a lock (barrier for races). */
+async function waitForLockWaiters(client: Client, expected: number): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    // The observing client is inside an open transaction; its statistics
+    // snapshot is cached on first access, so discard it before each poll or a
+    // waiter that blocks later would stay invisible (Postgres monitoring docs).
+    await client.query('SELECT pg_stat_clear_snapshot()');
+    const result = await client.query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'",
+    );
+    if (Number(result.rows[0]?.n ?? '0') >= expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${expected} blocked queries`);
+}
+
+/**
+ * Hold a `FOR UPDATE` lock on a row, start (but do not await) the racing
+ * requests, wait until they block on that row, then release and collect them.
+ * This makes the concurrent-write interleaving deterministic instead of timing
+ * dependent.
+ */
+async function raceWithRowLock<T>(
+  locks: { table: string; id: string }[],
+  start: () => Promise<T>,
+  expectedWaiters: number,
+): Promise<T> {
+  const locker = new Client({ connectionString: databaseUrl });
+  await locker.connect();
+  try {
+    await locker.query('BEGIN');
+    for (const lock of locks) {
+      await locker.query(`SELECT id FROM ${lock.table} WHERE id = $1 FOR UPDATE`, [lock.id]);
+    }
+    const pending = start();
+    await waitForLockWaiters(locker, expectedWaiters);
+    await locker.query('COMMIT');
+    return await pending;
+  } finally {
+    await locker.end().catch(() => {});
+  }
+}
+
 describe('Milestone04 Task1: private evidence and qualification services', () => {
   it('foreign_file_and_vehicle404', async () => {
     await withTestDatabase(async (fixture) => {
@@ -283,7 +331,7 @@ describe('Milestone04 Task1: private evidence and qualification services', () =>
         kind: 'LICENSE',
         filename: 'spoof.jpg',
         contentType: 'image/jpeg',
-        body: PNG_WITH_METADATA,
+        body: await imageWithMetadata('png'),
       });
       expect(pngAsJpeg.status).toBe(415);
       const disallowed = await upload(app, '/api/v1/drivers/me/documents', owner, {
@@ -531,48 +579,590 @@ describe('Milestone04 Task1: private evidence and qualification services', () =>
     });
   }, 60000);
 
-  it('image_metadata_stripped_on_upload', async () => {
+  it('image_metadata_stripped_and_reencoded_on_upload', async () => {
     await withTestDatabase(async (fixture) => {
       await seedAccount(fixture, 't1-metadata@example.com', ['DRIVER']);
       const app = buildApp();
       const owner = await login(app, 't1-metadata@example.com');
 
-      const png = await upload(app, '/api/v1/drivers/me/documents', owner, {
-        kind: 'LICENSE',
-        filename: 'id.png',
-        contentType: 'image/png',
-        body: PNG_WITH_METADATA,
-      });
-      expect(png.status).toBe(201);
-      const pngContent = await getBinary(
-        app,
-        `/api/v1/documents/${png.body.data.id as string}/content`,
-        owner,
-      );
-      expect(pngContent.status).toBe(200);
-      const pngBytes = Buffer.from(pngContent.body as Buffer);
-      expect(pngBytes.subarray(0, 8).equals(PNG_SIGNATURE)).toBe(true);
-      expect(pngBytes.includes(Buffer.from('tEXt'))).toBe(false);
-      expect(pngBytes.includes(Buffer.from('EVIDENCE-SECRET-MARKER'))).toBe(false);
-      expect(pngBytes.includes(SECRET_MARKER)).toBe(false);
+      for (const format of ['png', 'jpeg', 'webp'] as const) {
+        const declared =
+          format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
+        const source = await imageWithMetadata(format);
+        expect(source.includes(Buffer.from(EVIDENCE_METADATA_MARKER))).toBe(true);
 
-      const jpeg = await upload(app, '/api/v1/drivers/me/documents', owner, {
+        const uploaded = await upload(app, '/api/v1/drivers/me/documents', owner, {
+          kind: 'LICENSE',
+          filename: `id.${format}`,
+          contentType: declared,
+          body: source,
+        });
+        expect(uploaded.status).toBe(201);
+        const content = await getBinary(
+          app,
+          `/api/v1/documents/${uploaded.body.data.id as string}/content`,
+          owner,
+        );
+        expect(content.status).toBe(200);
+        expect(String(content.headers['content-type'])).toContain(declared);
+        const bytes = Buffer.from(content.body as Buffer);
+
+        // A real decode of the stored bytes proves they are a valid image of the
+        // same format/geometry, not merely a header with metadata chunks removed.
+        const meta = await sharp(bytes).metadata();
+        expect(meta.format).toBe(format);
+        expect(meta.width).toBe(24);
+        expect(meta.height).toBe(16);
+        expect(bytes.includes(Buffer.from(EVIDENCE_METADATA_MARKER))).toBe(false);
+      }
+    });
+  }, 60000);
+
+  it('invalid_or_corrupt_image_rejected', async () => {
+    await withTestDatabase(async (fixture) => {
+      await seedAccount(fixture, 't1-corrupt@example.com', ['DRIVER']);
+      const app = buildApp();
+      const owner = await login(app, 't1-corrupt@example.com');
+
+      // Valid magic, undecodable body: the previous magic-only path accepted it.
+      const corruptPng = Buffer.concat([
+        PNG_SIGNATURE,
+        Buffer.from('this is not a decodable png body', 'ascii'),
+      ]);
+      const pngResponse = await upload(app, '/api/v1/drivers/me/documents', owner, {
         kind: 'LICENSE',
-        filename: 'id.jpg',
-        contentType: 'image/jpeg',
-        body: JPEG_WITH_METADATA,
+        filename: 'corrupt.png',
+        contentType: 'image/png',
+        body: corruptPng,
       });
-      expect(jpeg.status).toBe(201);
-      const jpegContent = await getBinary(
+      expect(pngResponse.status).toBe(415);
+
+      const corruptJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+      const jpegResponse = await upload(app, '/api/v1/drivers/me/documents', owner, {
+        kind: 'LICENSE',
+        filename: 'corrupt.jpg',
+        contentType: 'image/jpeg',
+        body: corruptJpeg,
+      });
+      expect(jpegResponse.status).toBe(415);
+
+      const corruptWebp = Buffer.concat([
+        Buffer.from('RIFF', 'ascii'),
+        Buffer.from([0x1a, 0x00, 0x00, 0x00]),
+        Buffer.from('WEBP', 'ascii'),
+        Buffer.from('not a decodable webp body', 'ascii'),
+      ]);
+      const webpResponse = await upload(app, '/api/v1/drivers/me/documents', owner, {
+        kind: 'LICENSE',
+        filename: 'corrupt.webp',
+        contentType: 'image/webp',
+        body: corruptWebp,
+      });
+      expect(webpResponse.status).toBe(415);
+    });
+  }, 60000);
+
+  it('decompression_bomb_rejected', async () => {
+    await withTestDatabase(async (fixture) => {
+      await seedAccount(fixture, 't1-bomb@example.com', ['DRIVER']);
+      const app = buildApp();
+      const owner = await login(app, 't1-bomb@example.com');
+
+      // A real, decodable PNG whose pixel count exceeds the bounded decode limit
+      // but whose compressed size stays under the 5 MiB upload ceiling.
+      const bomb = await imageWithMetadata('png', { width: 7000, height: 7000, marker: 'BOMB' });
+      expect(bomb.byteLength).toBeLessThan(5 * 1024 * 1024);
+
+      const response = await upload(app, '/api/v1/drivers/me/documents', owner, {
+        kind: 'LICENSE',
+        filename: 'bomb.png',
+        contentType: 'image/png',
+        body: bomb,
+      });
+      expect(response.status).toBe(415);
+    });
+  }, 60000);
+
+  it('polyglot_trailing_payload_removed', async () => {
+    await withTestDatabase(async (fixture) => {
+      await seedAccount(fixture, 't1-polyglot@example.com', ['DRIVER']);
+      const app = buildApp();
+      const owner = await login(app, 't1-polyglot@example.com');
+
+      // A valid JPEG with an appended polyglot payload after EOI. Metadata-skip
+      // copying would carry the trailer through; decode/re-encode must not.
+      const polyglot = Buffer.concat([await imageWithMetadata('jpeg'), POLYGLOT_TRAILER]);
+      const uploaded = await upload(app, '/api/v1/drivers/me/documents', owner, {
+        kind: 'LICENSE',
+        filename: 'polyglot.jpg',
+        contentType: 'image/jpeg',
+        body: polyglot,
+      });
+      expect(uploaded.status).toBe(201);
+      const content = await getBinary(
         app,
-        `/api/v1/documents/${jpeg.body.data.id as string}/content`,
+        `/api/v1/documents/${uploaded.body.data.id as string}/content`,
         owner,
       );
-      expect(jpegContent.status).toBe(200);
-      const jpegBytes = Buffer.from(jpegContent.body as Buffer);
-      expect(jpegBytes.subarray(0, 2).equals(Buffer.from([0xff, 0xd8]))).toBe(true);
-      expect(jpegBytes.includes(Buffer.from('EXIF-SECRET-42'))).toBe(false);
-      expect(jpegBytes.includes(Buffer.from([0xff, 0xe1]))).toBe(false);
+      expect(content.status).toBe(200);
+      const bytes = Buffer.from(content.body as Buffer);
+      expect(bytes.includes(POLYGLOT_TRAILER)).toBe(false);
+      expect((await sharp(bytes).metadata()).format).toBe('jpeg');
+    });
+  }, 60000);
+
+  it('material_edit_resolves_orphan_pending_verification', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      await seedAccount(fixture, 't1-orphan@example.com', ['DRIVER']);
+      const app = buildApp();
+      const owner = await login(app, 't1-orphan@example.com');
+
+      const profile = await auth(app, owner).put('/api/v1/drivers/me').send(driverInput(cityId));
+      expect(profile.status).toBe(200);
+      const version = profile.body.data.version as number;
+      const license = await upload(app, '/api/v1/drivers/me/documents', owner, {
+        kind: 'LICENSE',
+        filename: 'license.pdf',
+        contentType: 'application/pdf',
+        body: CLEAN_PDF,
+      });
+      expect(license.status).toBe(201);
+      const submitted = await auth(app, owner)
+        .post('/api/v1/drivers/me/verification')
+        .send({ version });
+      expect(submitted.status).toBe(201);
+      const verificationId = submitted.body.data.id as string;
+
+      // Submitting bumps the profile revision; a material edit must present the
+      // freshly-read version so the change is accepted and invalidates review.
+      const current = await auth(app, owner).get('/api/v1/drivers/me');
+      expect(current.status).toBe(200);
+      const edited = await auth(app, owner)
+        .put('/api/v1/drivers/me')
+        .send(
+          driverInput(cityId, {
+            licenseNumber: 'KA01-2020-4242',
+            version: current.body.data.version as number,
+          }),
+        );
+      expect(edited.status).toBe(200);
+
+      // The superseded revision is resolved (kept as immutable history)...
+      const prior = await fixture.runtimePool.query<{ status: string; reason: string | null }>(
+        'SELECT status, reason FROM verification_requests WHERE id=$1',
+        [verificationId],
+      );
+      expect(prior.rows[0]?.status).toBe('REJECTED');
+      expect(prior.rows[0]?.reason).toBeTruthy();
+      const links = await fixture.runtimePool.query<{ n: string }>(
+        'SELECT count(*)::text AS n FROM verification_documents WHERE verification_id=$1',
+        [verificationId],
+      );
+      expect(links.rows[0]?.n).toBe('1');
+
+      // ...so the corrected owner can resubmit immediately.
+      const resubmit = await auth(app, owner)
+        .post('/api/v1/drivers/me/verification')
+        .send({ version: edited.body.data.version as number });
+      expect(resubmit.status).toBe(201);
+      expect(resubmit.body.data.id).not.toBe(verificationId);
+    });
+  }, 60000);
+
+  it('concurrent_driver_upserts_reject_lost_update', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      const userId = await seedAccount(fixture, 't1-race-driver@example.com', ['DRIVER']);
+      const app = buildApp();
+      const owner = await login(app, 't1-race-driver@example.com');
+      const created = await auth(app, owner).put('/api/v1/drivers/me').send(driverInput(cityId));
+      expect(created.status).toBe(200);
+      const version = created.body.data.version as number;
+      const driver = await fixture.runtimePool.query<{ id: string }>(
+        'SELECT id FROM driver_profiles WHERE user_id=$1',
+        [userId],
+      );
+      const driverId = driver.rows[0]?.id as string;
+
+      const responses = await raceWithRowLock(
+        [{ table: 'driver_profiles', id: driverId }],
+        () =>
+          Promise.all([
+            auth(app, owner)
+              .put('/api/v1/drivers/me')
+              .send(driverInput(cityId, { hourlyRateMinor: 61000, version })),
+            auth(app, owner)
+              .put('/api/v1/drivers/me')
+              .send(driverInput(cityId, { hourlyRateMinor: 62000, version })),
+          ]),
+        2,
+      );
+      expect(responses.map((row) => row.status).sort()).toEqual([200, 409]);
+      const persisted = await fixture.runtimePool.query<{ version: number }>(
+        'SELECT version FROM driver_profiles WHERE id=$1',
+        [driverId],
+      );
+      expect(persisted.rows[0]?.version).toBe(version + 1);
+    });
+  }, 60000);
+
+  it('concurrent_listing_updates_reject_lost_update', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      const userId = await seedAccount(fixture, 't1-race-listing@example.com', ['DRIVER']);
+      const app = buildApp();
+      const owner = await login(app, 't1-race-listing@example.com');
+      // Build the profile through the real API so the encrypted license is valid
+      // for the private DTO, then promote it to an approved, non-listed driver.
+      const created = await auth(app, owner).put('/api/v1/drivers/me').send(driverInput(cityId));
+      expect(created.status).toBe(200);
+      const driver = await fixture.runtimePool.query<{ id: string }>(
+        'SELECT id FROM driver_profiles WHERE user_id=$1',
+        [userId],
+      );
+      const driverId = driver.rows[0]?.id as string;
+      await fixture.runtimePool.query(
+        "UPDATE driver_profiles SET verification_status='APPROVED', accepting_bookings=false WHERE id=$1",
+        [driverId],
+      );
+
+      const responses = await raceWithRowLock(
+        [{ table: 'driver_profiles', id: driverId }],
+        () =>
+          Promise.all([
+            auth(app, owner)
+              .patch('/api/v1/drivers/me/listing')
+              .send({ enabled: true, version: 1 }),
+            auth(app, owner)
+              .patch('/api/v1/drivers/me/listing')
+              .send({ enabled: true, version: 1 }),
+          ]),
+        2,
+      );
+      expect(responses.map((row) => row.status).sort()).toEqual([200, 409]);
+      const persisted = await fixture.runtimePool.query<{
+        version: number;
+        acceptingBookings: boolean;
+      }>(
+        'SELECT version, accepting_bookings AS "acceptingBookings" FROM driver_profiles WHERE id=$1',
+        [driverId],
+      );
+      expect(persisted.rows[0]?.version).toBe(2);
+      expect(persisted.rows[0]?.acceptingBookings).toBe(true);
+    });
+  }, 60000);
+
+  it('concurrent_vehicle_updates_reject_lost_update', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      await seedAccount(fixture, 't1-race-vehicle@example.com', ['PASSENGER']);
+      const app = buildApp();
+      const owner = await login(app, 't1-race-vehicle@example.com');
+
+      const created = await auth(app, owner)
+        .post('/api/v1/vehicles')
+        .send(vehicleInput(cityId, 'KA01-AA-7777'));
+      expect(created.status).toBe(201);
+      const vehicleId = created.body.data.id as string;
+      const version = created.body.data.version as number;
+
+      const responses = await raceWithRowLock(
+        [{ table: 'vehicles', id: vehicleId }],
+        () =>
+          Promise.all([
+            auth(app, owner)
+              .put(`/api/v1/vehicles/${vehicleId}`)
+              .send({ ...vehicleInput(cityId, 'KA01-AA-7777', version), make: 'Honda' }),
+            auth(app, owner)
+              .put(`/api/v1/vehicles/${vehicleId}`)
+              .send({ ...vehicleInput(cityId, 'KA01-AA-7777', version), make: 'Toyota' }),
+          ]),
+        2,
+      );
+      expect(responses.map((row) => row.status).sort()).toEqual([200, 409]);
+      const persisted = await fixture.runtimePool.query<{ version: number }>(
+        'SELECT version FROM vehicles WHERE id=$1',
+        [vehicleId],
+      );
+      expect(persisted.rows[0]?.version).toBe(version + 1);
+    });
+  }, 60000);
+
+  it('expiry_job_uses_current_valid_insurance', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      const userId = await seedAccount(fixture, 't1-insurance@example.com', ['DRIVER']);
+      const adminId = await seedAccount(fixture, 't1-insurance-admin@example.com', ['ADMIN']);
+      const expiredOn = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const validOn = futureDate(200);
+
+      /**
+       * Persist an APPROVED vehicle whose immutable reviewed revision links the
+       * given insurance. Any later upload that is not part of the revision is
+       * deliberately unreviewed, exactly as a fresh owner upload would be.
+       */
+      async function seedApprovedVehicle(reviewedInsuranceExpiresOn: string): Promise<string> {
+        const vehicle = await fixture.runtimePool.query<{ id: string }>(
+          `INSERT INTO vehicles(owner_id, registration_number_ciphertext, registration_number_digest,
+               make, model, year, category, seats, transmission, fuel_type, city_id, verification_status)
+             VALUES ($1, 'cipher', $2, 'Maruti', 'Swift', 2020, 'HATCHBACK', 4, 'MANUAL', 'PETROL', $3, 'APPROVED')
+             RETURNING id`,
+          [userId, randomBytes(32).toString('hex'), cityId],
+        );
+        const vehicleId = vehicle.rows[0]?.id as string;
+        const insurance = await fixture.runtimePool.query<{ id: string }>(
+          `INSERT INTO documents(uploader_id, vehicle_id, kind, object_key, content_type, byte_size,
+               sha256, scan_status, expires_on)
+             VALUES ($1, $2, 'INSURANCE', $3, 'application/pdf', 10, $4, 'CLEAN', $5) RETURNING id`,
+          [
+            userId,
+            vehicleId,
+            randomBytes(24).toString('hex'),
+            randomBytes(32).toString('hex'),
+            reviewedInsuranceExpiresOn,
+          ],
+        );
+        const revision = await fixture.runtimePool.query<{ id: string }>(
+          `INSERT INTO verification_requests(vehicle_id, revision, subject_version, status,
+               submitted_by, decided_by, submitted_at, decided_at)
+             VALUES ($1, 1, 1, 'APPROVED', $2, $3, now() - interval '9 days', now() - interval '8 days')
+             RETURNING id`,
+          [vehicleId, userId, adminId],
+        );
+        const revisionId = revision.rows[0]?.id as string;
+        await fixture.runtimePool.query(
+          'INSERT INTO verification_documents(verification_id, document_id) VALUES ($1, $2)',
+          [revisionId, insurance.rows[0]?.id as string],
+        );
+        await fixture.runtimePool.query(
+          'UPDATE vehicles SET current_verification_id = $1 WHERE id = $2',
+          [revisionId, vehicleId],
+        );
+        return vehicleId;
+      }
+      async function seedUnreviewedInsurance(vehicleId: string, expiresOn: string): Promise<void> {
+        await fixture.runtimePool.query(
+          `INSERT INTO documents(uploader_id, vehicle_id, kind, object_key, content_type, byte_size,
+               sha256, scan_status, expires_on)
+             VALUES ($1, $2, 'INSURANCE', $3, 'application/pdf', 10, $4, 'CLEAN', $5)`,
+          [
+            userId,
+            vehicleId,
+            randomBytes(24).toString('hex'),
+            randomBytes(32).toString('hex'),
+            expiresOn,
+          ],
+        );
+      }
+
+      // Reviewed insurance still valid: a stray older expired upload must not
+      // expire an approval whose immutable snapshot is valid.
+      const currentValid = await seedApprovedVehicle(validOn);
+      await seedUnreviewedInsurance(currentValid, expiredOn);
+      // Reviewed insurance expired: a newer unreviewed upload cannot rescue it.
+      const currentExpired = await seedApprovedVehicle(expiredOn);
+      await seedUnreviewedInsurance(currentExpired, validOn);
+
+      const service = createProvidersService({
+        prisma,
+        config,
+        storage: createPrivateStorage({ root: config.storagePrivateRoot }),
+        scanner: realScanner,
+      });
+      await service.expireQualifications();
+
+      const statuses = await fixture.runtimePool.query<{ id: string; status: string }>(
+        'SELECT id, verification_status AS status FROM vehicles WHERE id = ANY($1::uuid[])',
+        [[currentValid, currentExpired]],
+      );
+      const byId = new Map(statuses.rows.map((row) => [row.id, row.status]));
+      expect(byId.get(currentValid)).toBe('APPROVED');
+      expect(byId.get(currentExpired)).toBe('EXPIRED');
+    });
+  }, 60000);
+
+  it('driver_search_time_filter_paginates_true_matches', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      const start = new Date(Date.now() + 30 * 60 * 1000);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      // Covering windows exist for indices 0 (also blocked), 1, 22, 23, 24.
+      const covered = new Set([0, 1, 22, 23, 24]);
+      const ids: string[] = [];
+      for (let index = 0; index < 25; index += 1) {
+        const passwordHash = await argon2Hash(PASSWORD);
+        const user = await fixture.runtimePool.query<{ id: string }>(
+          `INSERT INTO users(email, display_name, password_hash, email_verified_at)
+             VALUES ($1, $2, $3, now()) RETURNING id`,
+          [`t1-search-${index}@example.com`, `Search Driver ${index}`, passwordHash],
+        );
+        const driver = await fixture.runtimePool.query<{ id: string }>(
+          `INSERT INTO driver_profiles(user_id, license_number_ciphertext, license_number_digest,
+               license_country, license_expires_on, city_id, hourly_rate_minor, verification_status,
+               accepting_bookings, updated_at)
+             VALUES ($1, 'cipher', $2, 'IN', $3, $4, 50000, 'APPROVED', true, now() - ($5 || ' minutes')::interval)
+             RETURNING id`,
+          [
+            user.rows[0]?.id as string,
+            index.toString(16).padStart(64, '0'),
+            futureDate(),
+            cityId,
+            String(index),
+          ],
+        );
+        const driverId = driver.rows[0]?.id as string;
+        ids.push(driverId);
+        if (covered.has(index)) {
+          await fixture.runtimePool.query(
+            `INSERT INTO availability_windows(driver_id, kind, starts_at, ends_at)
+               VALUES ($1, 'AVAILABLE', now() - interval '2 hours', now() + interval '6 hours')`,
+            [driverId],
+          );
+        }
+        if (index === 0) {
+          const block = await fixture.runtimePool.query<{ id: string }>(
+            `INSERT INTO availability_windows(driver_id, kind, starts_at, ends_at)
+               VALUES ($1, 'BLOCKED', now() - interval '2 hours', now() + interval '6 hours')
+               RETURNING id`,
+            [driverId],
+          );
+          await fixture.runtimePool.query(
+            `INSERT INTO resource_reservations(driver_id, availability_block_id, starts_at, ends_at)
+               VALUES ($1, $2, now() - interval '1 hour', now() + interval '2 hours')`,
+            [driverId, block.rows[0]?.id as string],
+          );
+        }
+      }
+      const app = buildApp();
+      const response = await request(app).get('/api/v1/drivers').query({
+        startsAt: start.toISOString(),
+        endsAt: end.toISOString(),
+        pageSize: '20',
+      });
+      expect(response.status).toBe(200);
+      // 25 drivers qualify as drivers, but only 4 are free for the window; the
+      // count/pagination must reflect the true matches (indices 22-24 sit beyond
+      // the first 20-row slice yet remain reachable).
+      expect(response.body.meta.total).toBe(4);
+      const returned = (response.body.data as { id: string }[]).map((row) => row.id);
+      expect(returned).toHaveLength(4);
+      expect([...returned].sort()).toEqual([ids[1], ids[22], ids[23], ids[24]].sort());
+
+      const invalid = await request(app)
+        .get('/api/v1/drivers')
+        .query({ startsAt: 'not-a-date', endsAt: 'also-not-a-date' });
+      expect(invalid.status).toBe(400);
+    });
+  }, 60000);
+
+  it('verification_reason_is_owner_private_only', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      const adminId = await seedAccount(fixture, 't1-reason-admin@example.com', ['ADMIN']);
+      const driverUserId = await seedAccount(fixture, 't1-reason-driver@example.com', ['DRIVER']);
+      const ownerUserId = await seedAccount(fixture, 't1-reason-owner@example.com', ['PASSENGER']);
+      // A normal approved driver proves the public DTOs stay reason-free.
+      const publicUserId = await seedAccount(fixture, 't1-reason-public@example.com', ['DRIVER']);
+      const app = buildApp();
+      const driverToken = await login(app, 't1-reason-driver@example.com');
+      const ownerToken = await login(app, 't1-reason-owner@example.com');
+
+      // Rejected driver: the persisted administrator reason is owner-private.
+      const profile = await auth(app, driverToken)
+        .put('/api/v1/drivers/me')
+        .send(driverInput(cityId));
+      expect(profile.status).toBe(200);
+      const driverRow = await fixture.runtimePool.query<{ id: string }>(
+        'SELECT id FROM driver_profiles WHERE user_id=$1',
+        [driverUserId],
+      );
+      const driverId = driverRow.rows[0]?.id as string;
+      const driverReason = 'License image is unreadable; upload a clearer scan.';
+      const driverRevision = await fixture.runtimePool.query<{ id: string }>(
+        `INSERT INTO verification_requests(driver_id, revision, subject_version, status,
+             submitted_by, decided_by, submitted_at, decided_at, reason)
+           VALUES ($1, 1, 1, 'REJECTED', $2, $3, now() - interval '2 days',
+             now() - interval '1 day', $4) RETURNING id`,
+        [driverId, driverUserId, adminId, driverReason],
+      );
+      await fixture.runtimePool.query(
+        `UPDATE driver_profiles SET current_verification_id=$1, verification_status='REJECTED'
+           WHERE id=$2`,
+        [driverRevision.rows[0]?.id, driverId],
+      );
+
+      const mine = await auth(app, driverToken).get('/api/v1/drivers/me');
+      expect(mine.status).toBe(200);
+      expect(mine.body.data.verificationReason).toBe(driverReason);
+
+      // Rejected vehicle: same owner-private-only reason on the owner list.
+      const vehicle = await auth(app, ownerToken)
+        .post('/api/v1/vehicles')
+        .send(vehicleInput(cityId, 'KA01-RR-0001'));
+      expect(vehicle.status).toBe(201);
+      const vehicleId = vehicle.body.data.id as string;
+      const vehicleReason = 'Insurance certificate does not match the registration.';
+      const vehicleRevision = await fixture.runtimePool.query<{ id: string }>(
+        `INSERT INTO verification_requests(vehicle_id, revision, subject_version, status,
+             submitted_by, decided_by, submitted_at, decided_at, reason)
+           VALUES ($1, 1, 1, 'REJECTED', $2, $3, now() - interval '2 days',
+             now() - interval '1 day', $4) RETURNING id`,
+        [vehicleId, ownerUserId, adminId, vehicleReason],
+      );
+      await fixture.runtimePool.query(
+        `UPDATE vehicles SET current_verification_id=$1, verification_status='REJECTED' WHERE id=$2`,
+        [vehicleRevision.rows[0]?.id, vehicleId],
+      );
+      const vehicles = await auth(app, ownerToken).get('/api/v1/users/me/vehicles');
+      expect(vehicles.status).toBe(200);
+      const listed = (vehicles.body.data as { id: string; verificationReason?: string }[]).find(
+        (row) => row.id === vehicleId,
+      );
+      expect(listed?.verificationReason).toBe(vehicleReason);
+
+      // Public driver surfaces never expose the private reason field.
+      const publicDriver = await fixture.runtimePool.query<{ id: string }>(
+        `INSERT INTO driver_profiles(user_id, license_number_ciphertext, license_number_digest,
+             license_country, license_expires_on, city_id, hourly_rate_minor,
+             verification_status, accepting_bookings)
+           VALUES ($1, 'cipher', $2, 'IN', $3, $4, 50000, 'APPROVED', true) RETURNING id`,
+        [publicUserId, 'e'.repeat(64), futureDate(), cityId],
+      );
+      const publicDriverId = publicDriver.rows[0]?.id as string;
+      const search = await request(app).get('/api/v1/drivers');
+      expect(search.status).toBe(200);
+      for (const item of search.body.data as Record<string, unknown>[]) {
+        expect('verificationReason' in item).toBe(false);
+      }
+      const detail = await request(app).get(`/api/v1/drivers/${publicDriverId}`);
+      expect(detail.status).toBe(200);
+      expect('verificationReason' in (detail.body.data as Record<string, unknown>)).toBe(false);
+    });
+  }, 60000);
+
+  it('missing_clean_evidence_returns_404', async () => {
+    await withTestDatabase(async (fixture) => {
+      await seedAccount(fixture, 't1-missing@example.com', ['DRIVER']);
+      const app = buildApp();
+      const owner = await login(app, 't1-missing@example.com');
+      const uploaded = await upload(app, '/api/v1/drivers/me/documents', owner, {
+        kind: 'LICENSE',
+        filename: 'license.pdf',
+        contentType: 'application/pdf',
+        body: CLEAN_PDF,
+      });
+      expect(uploaded.status).toBe(201);
+      const documentId = uploaded.body.data.id as string;
+      const row = await fixture.runtimePool.query<{ objectKey: string }>(
+        'SELECT object_key AS "objectKey" FROM documents WHERE id=$1',
+        [documentId],
+      );
+      const storage = createPrivateStorage({ root: config.storagePrivateRoot });
+      rmSync(storage.cleanPath(row.rows[0]?.objectKey as string));
+
+      const response = await getBinary(app, `/api/v1/documents/${documentId}/content`, owner);
+      expect(response.status).toBe(404);
     });
   }, 60000);
 });

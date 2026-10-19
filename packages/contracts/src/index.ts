@@ -24,4 +24,5 @@ export const UserRoleSchema = z.enum(['PASSENGER', 'DRIVER', 'ADMIN']);
 export type UserRole = z.infer<typeof UserRoleSchema>;
 
 export * from './auth.js';
+export * from './cities.js';
 export * from './providers.js';

@@ -67,6 +67,7 @@ export const DriverPrivateSchema = z.strictObject({
   licenseNumber: z.string().min(1).max(40).nullable(),
   licenseCountry: z.string().min(1).max(2).nullable(),
   licenseExpiresOn: isoDate.nullable(),
+  verificationReason: z.string().min(1).max(1000).optional(),
 });
 
 export const ListingInputSchema = z.strictObject({
@@ -106,6 +107,7 @@ export const VehiclePrivateSchema = z.strictObject({
   version: z.number().int().min(1).max(2_147_483_647),
   registrationNumber: z.string().min(1).max(30),
   description: z.string().min(1).max(1500).optional(),
+  verificationReason: z.string().min(1).max(1000).optional(),
 });
 
 // --- Documents --------------------------------------------------------------

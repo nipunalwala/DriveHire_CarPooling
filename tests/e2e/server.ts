@@ -1,9 +1,14 @@
 import { randomBytes } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { loadEnvFile } from 'node:process';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { once } from 'node:events';
-import { withTestDatabase } from '../../apps/api/src/test/database-fixture.js';
+import { hash as argon2Hash } from '@node-rs/argon2';
+import {
+  withTestDatabase,
+  type DatabaseFixture,
+} from '../../apps/api/src/test/database-fixture.js';
 import { requireTestDatabaseUrl } from '../../apps/api/src/runtime/test-database.js';
 import { createPrisma } from '../../apps/api/src/runtime/prisma.js';
 import { parseEnv } from '../../apps/api/src/config/env.js';
@@ -13,6 +18,7 @@ import { createAuthEmailDelivery } from '../../apps/api/src/modules/accounts/ema
 import { createSmtpMail } from '../../apps/api/src/adapters/smtp-mail.js';
 import { createPrivateStorage } from '../../apps/api/src/adapters/private-storage.js';
 import { createClamAvScan } from '../../apps/api/src/adapters/clamav-scan.js';
+import { provisionCuratedCities } from '../../apps/api/src/modules/cities/reference-data.js';
 
 loadEnvFile('.env');
 // Dedicated E2E Compose has its own ports and data. Never reuse the backend
@@ -21,12 +27,51 @@ loadEnvFile('.env');
 // Compose ports so CI and local browser runs are unchanged.
 const E2E_DATABASE_PORT = process.env.E2E_DATABASE_PORT ?? '55434';
 const E2E_SMTP_PORT = process.env.E2E_SMTP_PORT ?? '11026';
+
+// Test-only fixtures for the provider/admin browser journeys. They are written
+// into the isolated E2E database (55434) through the harness migration
+// identity and are never used by the API at runtime. The curated city
+// catalogue comes from the backend reference-data source so the browser
+// fixture never drifts from the production catalogue (codes, not state names).
+const E2E_ADMIN_EMAIL = process.env.E2E_ADMIN_EMAIL ?? 'e2e-admin@drivehire.test';
+// Generated per run and shared only through a gitignored file; never logged.
+const E2E_ADMIN_PASSWORD = randomBytes(24).toString('base64url');
+// Kept outside test-results: Playwright wipes its output directory at run start.
+const E2E_FIXTURE_FILE = resolve('.cache', 'e2e-fixtures.json');
+
+async function provisionE2EFixtures(fixture: DatabaseFixture): Promise<void> {
+  await provisionCuratedCities(fixture.migrationPool);
+  const passwordHash = await argon2Hash(E2E_ADMIN_PASSWORD);
+  const existing = await fixture.migrationPool.query<{ id: string }>(
+    'SELECT id FROM users WHERE email = $1',
+    [E2E_ADMIN_EMAIL],
+  );
+  let adminId = existing.rows[0]?.id;
+  if (!adminId) {
+    const created = await fixture.migrationPool.query<{ id: string }>(
+      `INSERT INTO users(email, display_name, password_hash, email_verified_at, status)
+       VALUES ($1, 'E2E Administrator', $2, now(), 'ACTIVE') RETURNING id`,
+      [E2E_ADMIN_EMAIL, passwordHash],
+    );
+    adminId = created.rows[0]?.id as string;
+  }
+  await fixture.migrationPool.query(
+    'INSERT INTO user_roles(user_id, role) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+    [adminId, 'ADMIN'],
+  );
+  mkdirSync(resolve('.cache'), { recursive: true });
+  writeFileSync(
+    E2E_FIXTURE_FILE,
+    JSON.stringify({ admin: { email: E2E_ADMIN_EMAIL, password: E2E_ADMIN_PASSWORD } }),
+  );
+}
+
 for (const key of ['TEST_DATABASE_URL', 'TEST_MIGRATION_DATABASE_URL']) {
   const url = new URL(requireTestDatabaseUrl(process.env[key]));
   url.port = E2E_DATABASE_PORT;
   process.env[key] = url.toString();
 }
-await withTestDatabase(async () => {
+await withTestDatabase(async (fixture) => {
   const config = parseEnv({
     ...process.env,
     NODE_ENV: 'test',
@@ -44,6 +89,7 @@ await withTestDatabase(async () => {
     STORAGE_PRIVATE_ROOT: resolve('test-results', 'private-e2e-evidence'),
   });
   const prisma = createPrisma(config.databaseUrl);
+  await provisionE2EFixtures(fixture);
   const logger = createLogger('error');
   const app = createApp({
     config,

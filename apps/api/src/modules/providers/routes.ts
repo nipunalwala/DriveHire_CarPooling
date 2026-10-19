@@ -176,6 +176,12 @@ export function createProvidersRouter(deps: ProvidersDependencies): Router {
     res.setHeader('Content-Disposition', `attachment; filename="${content.filename}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'no-store');
+    // Never let a stream failure crash the process; only the already-authorized
+    // owner/admin ever reaches this handler.
+    content.stream.on('error', () => {
+      if (res.headersSent) res.destroy();
+      else res.status(404).end();
+    });
     content.stream.pipe(res);
   });
 

@@ -352,12 +352,19 @@ form {
   z-index: 10;
   top: 12px;
   left: 12px;
-  transform: translateY(-200%);
-  padding: 12px 18px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
   background: white;
 }
 .skip-link:focus {
-  transform: none;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  padding: 12px 18px;
 }
 @media (max-width: 740px) {
   .site-header {
@@ -478,5 +485,120 @@ form {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+.provider-page .task-navigation {
+  display: grid;
+  align-items: start;
+  gap: 12px;
+  margin-block: 28px;
+}
+.provider-page h3 {
+  font-size: 18px;
+  margin-block: 20px 8px;
+}
+.provider-page fieldset {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.provider-page legend {
+  font-weight: 600;
+  margin-bottom: 18px;
+}
+.provider-page select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #8da99f;
+  border-radius: 7px;
+  color: var(--ink);
+  background: white;
+  font: inherit;
+}
+.provider-page select:disabled {
+  background: #edf0e9;
+  color: var(--muted);
+}
+.provider-page .form-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.provider-page .record-list {
+  list-style: none;
+  padding: 0;
+  margin-block: 20px;
+}
+.provider-page .record-list > li {
+  padding-block: 18px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.provider-page .record-list h3 {
+  margin-top: 0;
+}
+.provider-page .record-list p {
+  margin-bottom: 12px;
+}
+.provider-page .action-row,
+.provider-page .page-controls,
+.provider-page .section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-block: 20px;
+}
+.provider-page .section-heading {
+  justify-content: space-between;
+}
+.provider-page .section-heading h2 {
+  margin: 0;
+}
+.provider-page .archive-confirmation {
+  padding-block: 24px;
+}
+.provider-page .archive-confirmation summary {
+  cursor: pointer;
+  min-height: 44px;
+}
+.provider-page input[type='file'] {
+  height: auto;
+  white-space: normal;
+  max-width: 100%;
+}
+.provider-page .small-text {
+  overflow-wrap: anywhere;
+}
+.provider-page .profile-content,
+.provider-page .profile-content > section {
+  min-width: 0;
+}
+@media (max-width: 520px) {
+  .provider-page .form-columns {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .provider-page .profile-content form {
+    padding: 20px;
+  }
+}
+
+.provider-page fieldset > .field {
+  margin-bottom: 18px;
+}
+.provider-page fieldset > p {
+  margin-bottom: 18px;
+}
+.provider-page .form-columns {
+  margin-bottom: 24px;
+}
+@media (max-width: 520px) {
+  .provider-page .form-columns {
+    gap: 16px;
   }
 }

@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "start:worker": "node dist/worker.js"
+    "start:worker": "node dist/worker.js",
+    "db:seed:cities": "tsx --env-file-if-exists=../../.env src/seed/cities.ts"
   },
   "dependencies": {
     "@drivehire/contracts": "0.1.0",
@@ -23,6 +24,7 @@
     "pg": "8.23.1",
     "pino": "10.4.0",
     "pino-http": "11.0.0",
+    "sharp": "0.35.5",
     "zod": "4.6.7"
   },
   "devDependencies": {

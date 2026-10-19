@@ -12,6 +12,7 @@ import type { PrismaClient } from './generated/client/client.js';
 import type { ScanAdapter, StorageAdapter } from './ports.js';
 import { createAccountsRouter } from './modules/accounts/routes.js';
 import { createAccountsService } from './modules/accounts/service.js';
+import { createCitiesRouter } from './modules/cities/routes.js';
 import { createProvidersRouter } from './modules/providers/routes.js';
 import { createAdminRouter } from './modules/admin/routes.js';
 
@@ -102,6 +103,7 @@ export function createApp(options: {
     else next(new HttpError(503, 'DEPENDENCY_UNAVAILABLE', 'Service is not ready'));
   });
   if (options.accounts) {
+    app.use('/api/v1', createCitiesRouter({ prisma: options.accounts.prisma }));
     app.use(
       '/api/v1',
       createAccountsRouter({ prisma: options.accounts.prisma, config: options.config }),

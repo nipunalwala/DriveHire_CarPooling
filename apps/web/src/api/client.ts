@@ -35,6 +35,37 @@ export class ApiClient {
     return { success: true, data: result.data, meta: meta.data };
   }
 
+  async documentContent(id: string, retry = true): Promise<Blob> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      throw new ApiError('Invalid document reference.');
+    }
+    const headers = new Headers();
+    if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+    let response: Response;
+    try {
+      response = await fetch(`/api/v1/documents/${id}/content`, {
+        headers,
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+    } catch {
+      throw new ApiError('Could not load private evidence. Check your connection and try again.');
+    }
+    if (response.status === 401 && retry && this.refreshHandler && (await this.refreshHandler())) {
+      return this.documentContent(id, false);
+    }
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as {
+        error?: { message?: string; code?: string };
+      } | null;
+      throw new ApiError(
+        body?.error?.message ?? 'Private evidence is unavailable or access was denied.',
+        response.status,
+        body?.error?.code,
+      );
+    }
+    return response.blob();
+  }
   private async envelope<T>(
     path: string,
     init: RequestInit = {},

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadEnvFile } from 'node:process';
 import { hash as argon2Hash } from '@node-rs/argon2';
+import { Client } from 'pg';
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../app.js';
@@ -160,6 +161,19 @@ async function submitDriverVerification(
   };
 }
 
+function uploadVehicleDoc(
+  app: ReturnType<typeof createApp>,
+  token: string,
+  vehicleId: string,
+  kind: 'REGISTRATION' | 'INSURANCE',
+  name: string,
+  expiresOn?: string,
+) {
+  let agent = auth(app, token).post(`/api/v1/vehicles/${vehicleId}/documents`).field('kind', kind);
+  if (expiresOn) agent = agent.field('expiresOn', expiresOn);
+  return agent.attach('file', CLEAN_PDF, { filename: name, contentType: 'application/pdf' });
+}
+
 async function seedBookingHold(
   fixture: DatabaseFixture,
   input: {
@@ -207,6 +221,22 @@ async function seedBookingHold(
        VALUES ($1, $2, $3, $4)`,
     [booking.rows[0]?.id as string, input.driverId, input.startsAt, input.endsAt],
   );
+}
+
+/** Wait until `expected` backends are blocked on a lock (barrier for races). */
+async function waitForLockWaiters(client: Client, expected: number): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    // The observing client is inside an open transaction; its statistics
+    // snapshot is cached on first access, so discard it before each poll or a
+    // waiter that blocks later would stay invisible (Postgres monitoring docs).
+    await client.query('SELECT pg_stat_clear_snapshot()');
+    const result = await client.query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'",
+    );
+    if (Number(result.rows[0]?.n ?? '0') >= expected) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${expected} blocked queries`);
 }
 
 const DECISION_REASON = 'Reviewed against the submitted qualification evidence.';
@@ -509,4 +539,198 @@ describe('Milestone04 Task2: minimal administrator APIs and evidence review', ()
       expect(secondDelete.status).toBe(404);
     });
   }, 90000);
+
+  it('stale_approval_cannot_override_concurrent_material_edit', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      await seedAccount(fixture, 't2-race-admin@example.com', ['ADMIN']);
+      const app = buildApp();
+      const admin = await login(app, 't2-race-admin@example.com');
+      const driver = await submitDriverVerification(
+        app,
+        fixture,
+        't2-race-driver@example.com',
+        cityId,
+      );
+      const driverRow = await fixture.runtimePool.query<{ id: string }>(
+        'SELECT id FROM driver_profiles WHERE user_id=$1',
+        [driver.userId],
+      );
+      const driverId = driverRow.rows[0]?.id as string;
+
+      // Lock the subject row, let the decision pass its pre-transaction checks
+      // and block on the subject update, then commit a material edit first.
+      const locker = new Client({ connectionString: databaseUrl });
+      await locker.connect();
+      await locker.query('BEGIN');
+      await locker.query('SELECT id FROM driver_profiles WHERE id = $1 FOR UPDATE', [driverId]);
+      const pending = auth(app, admin)
+        .post(`/api/v1/admin/verifications/${driver.verificationId}/decision`)
+        .send({ decision: 'APPROVE', version: driver.version, reason: DECISION_REASON })
+        .then((response) => response);
+      await waitForLockWaiters(locker, 1);
+      await locker.query(
+        `UPDATE driver_profiles
+           SET current_verification_id = NULL, verification_status = 'DRAFT', version = version + 1
+         WHERE id = $1`,
+        [driverId],
+      );
+      await locker.query('COMMIT');
+      const decision = await pending;
+      await locker.end();
+
+      // The stale approval must lose to the invalidating edit.
+      expect(decision.status).toBe(409);
+      const persisted = await fixture.runtimePool.query<{ status: string }>(
+        'SELECT verification_status AS status FROM driver_profiles WHERE id=$1',
+        [driverId],
+      );
+      expect(persisted.rows[0]?.status).toBe('DRAFT');
+      const requestRow = await fixture.runtimePool.query<{ status: string }>(
+        'SELECT status FROM verification_requests WHERE id=$1',
+        [driver.verificationId],
+      );
+      expect(requestRow.rows[0]?.status).toBe('PENDING');
+    });
+  }, 60000);
+
+  it('mutual_admin_suspension_keeps_an_active_admin', async () => {
+    await withTestDatabase(async (fixture) => {
+      const adminAId = await seedAccount(fixture, 't2-admin-a@example.com', ['ADMIN']);
+      const adminBId = await seedAccount(fixture, 't2-admin-b@example.com', ['ADMIN']);
+      const app = buildApp();
+      const adminA = await login(app, 't2-admin-a@example.com');
+      const adminB = await login(app, 't2-admin-b@example.com');
+
+      const locker = new Client({ connectionString: databaseUrl });
+      await locker.connect();
+      try {
+        await locker.query('BEGIN');
+        await locker.query('SELECT id FROM users WHERE id IN ($1, $2) FOR UPDATE', [
+          adminAId,
+          adminBId,
+        ]);
+        const aSuspendsB = auth(app, adminA)
+          .post(`/api/v1/admin/users/${adminBId}/suspend`)
+          .send({ reason: 'Concurrent suspension attempt from administrator A.' })
+          .then((response) => response);
+        const bSuspendsA = auth(app, adminB)
+          .post(`/api/v1/admin/users/${adminAId}/suspend`)
+          .send({ reason: 'Concurrent suspension attempt from administrator B.' })
+          .then((response) => response);
+        await waitForLockWaiters(locker, 2);
+        await locker.query('COMMIT');
+        const [resultA, resultB] = await Promise.all([aSuspendsB, bSuspendsA]);
+
+        // Exactly one mutual suspension applies and an active administrator remains.
+        expect([resultA.status, resultB.status].filter((status) => status === 200)).toHaveLength(1);
+      } finally {
+        await locker.query('ROLLBACK').catch(() => {});
+        await locker.end().catch(() => {});
+      }
+      const activeAdmins = await fixture.runtimePool.query<{ n: string }>(
+        `SELECT count(*)::text AS n FROM users u
+           JOIN user_roles r ON r.user_id = u.id
+         WHERE u.status = 'ACTIVE' AND r.role = 'ADMIN'`,
+      );
+      expect(activeAdmins.rows[0]?.n).toBe('1');
+    });
+  }, 60000);
+
+  it('vehicle_decision_rejects_expired_insurance_when_worker_paused', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      await seedAccount(fixture, 't2-vehicle-admin@example.com', ['ADMIN']);
+      await seedAccount(fixture, 't2-vehicle-owner@example.com', ['PASSENGER']);
+      const app = buildApp();
+      const admin = await login(app, 't2-vehicle-admin@example.com');
+      const owner = await login(app, 't2-vehicle-owner@example.com');
+
+      const created = await auth(app, owner).post('/api/v1/vehicles').send({
+        registrationNumber: 'T2-VEH-0001',
+        make: 'Maruti',
+        model: 'Swift',
+        year: 2020,
+        category: 'HATCHBACK',
+        seats: 4,
+        transmission: 'MANUAL',
+        fuelType: 'PETROL',
+        cityId,
+      });
+      expect(created.status).toBe(201);
+      const vehicleId = created.body.data.id as string;
+      const version = created.body.data.version as number;
+
+      const registration = await uploadVehicleDoc(app, owner, vehicleId, 'REGISTRATION', 'reg.pdf');
+      expect(registration.status).toBe(201);
+      const insurance = await uploadVehicleDoc(
+        app,
+        owner,
+        vehicleId,
+        'INSURANCE',
+        'insurance.pdf',
+        futureDate(),
+      );
+      expect(insurance.status).toBe(201);
+
+      const submitted = await auth(app, owner)
+        .post(`/api/v1/vehicles/${vehicleId}/verification`)
+        .send({ version });
+      expect(submitted.status).toBe(201);
+      const verificationId = submitted.body.data.id as string;
+      const requestVersion = submitted.body.data.version as number;
+
+      // The expiry worker is stopped; the submitted insurance ages out on its own.
+      await fixture.runtimePool.query(
+        `UPDATE documents SET expires_on = (now() - interval '1 day')::date
+         WHERE vehicle_id = $1 AND kind = 'INSURANCE'`,
+        [vehicleId],
+      );
+
+      const decision = await auth(app, admin)
+        .post(`/api/v1/admin/verifications/${verificationId}/decision`)
+        .send({ decision: 'APPROVE', version: requestVersion, reason: DECISION_REASON });
+      expect(decision.status).toBe(400);
+
+      const vehicle = await fixture.runtimePool.query<{ status: string }>(
+        'SELECT verification_status AS status FROM vehicles WHERE id=$1',
+        [vehicleId],
+      );
+      expect(vehicle.rows[0]?.status).not.toBe('APPROVED');
+    });
+  }, 60000);
+
+  it('stale_decision_on_superseded_revision_conflicts', async () => {
+    await withTestDatabase(async (fixture) => {
+      const cityId = await seedCity(fixture);
+      await seedAccount(fixture, 't2-super-admin@example.com', ['ADMIN']);
+      const app = buildApp();
+      const admin = await login(app, 't2-super-admin@example.com');
+      const driver = await submitDriverVerification(
+        app,
+        fixture,
+        't2-super-driver@example.com',
+        cityId,
+      );
+      const profile = await auth(app, driver.token).get('/api/v1/drivers/me');
+      const edited = await auth(app, driver.token)
+        .put('/api/v1/drivers/me')
+        .send({
+          ...driverInput(cityId, { version: profile.body.data.version as number }),
+          licenseNumber: 'KA01-2020-8888',
+        });
+      expect(edited.status).toBe(200);
+
+      const stale = await auth(app, admin)
+        .post(`/api/v1/admin/verifications/${driver.verificationId}/decision`)
+        .send({ decision: 'APPROVE', version: driver.version, reason: DECISION_REASON });
+      expect(stale.status).toBe(409);
+
+      const persisted = await fixture.runtimePool.query<{ status: string }>(
+        'SELECT status FROM verification_requests WHERE id=$1',
+        [driver.verificationId],
+      );
+      expect(persisted.rows[0]?.status).toBe('REJECTED');
+    });
+  }, 60000);
 });

@@ -167,13 +167,11 @@ function todayDate(): Date {
   return new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
 }
 
-export function createAdminService({ prisma }: { prisma: PrismaClient }): AdminService {
-  async function countActiveAdmins(): Promise<number> {
-    return prisma.user.count({
-      where: { status: 'ACTIVE', roles: { some: { role: 'ADMIN' } } },
-    });
-  }
+// Serializes administrator suspension decisions so the last-active-admin guard
+// is evaluated against a stable admin set.
+const ADMIN_SUSPENSION_LOCK_KEY = 48_243_501;
 
+export function createAdminService({ prisma }: { prisma: PrismaClient }): AdminService {
   return {
     async listUsers(account, query) {
       void account;
@@ -227,21 +225,45 @@ export function createAdminService({ prisma }: { prisma: PrismaClient }): AdminS
       const parsed = ReasonInputSchema.safeParse(input);
       if (!parsed.success) throw badRequest('Request validation failed');
       if (!z.uuid().safeParse(id).success) throw notFound('User not found');
-      const target = await prisma.user.findUnique({
-        where: { id },
-        include: { roles: { select: { role: true } } },
-      });
-      if (!target) throw notFound('User not found');
-      if (target.status === 'SUSPENDED') throw conflict('Account is already suspended');
-      const isAdmin = target.roles.some((role) => role.role === 'ADMIN');
-      // The last active administrator (including the caller) must remain.
-      if (isAdmin && (await countActiveAdmins()) <= 1) {
-        throw conflict('The last active administrator cannot be suspended');
-      }
-      if (target.id === account.userId) throw conflict('Administrators cannot suspend themselves');
       const now = new Date();
       const updated = await prisma.$transaction(async (tx) => {
+        // One serializing lock per admin suspension: concurrent mutual
+        // suspensions cannot both observe two active admins and both commit.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(${ADMIN_SUSPENSION_LOCK_KEY}::bigint)::text AS lock`;
+        // Re-validate the caller from current committed state; a concurrent
+        // suspension may have removed the caller's active administrator access.
+        const caller = await tx.user.findUnique({
+          where: { id: account.userId },
+          include: { roles: { select: { role: true } } },
+        });
+        if (
+          !caller ||
+          caller.status !== 'ACTIVE' ||
+          !caller.roles.some((role) => role.role === 'ADMIN')
+        ) {
+          throw forbidden('Administrator access is no longer active');
+        }
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${id} FOR UPDATE`;
+        const target = await tx.user.findUnique({
+          where: { id },
+          include: { roles: { select: { role: true } } },
+        });
+        if (!target) throw notFound('User not found');
+        if (target.status === 'SUSPENDED') throw conflict('Account is already suspended');
+        const isAdmin = target.roles.some((role) => role.role === 'ADMIN');
+        // The last active administrator (including the caller) must remain; the
+        // count is now inside the serialized transaction.
+        if (isAdmin) {
+          const activeAdmins = await tx.user.count({
+            where: { status: 'ACTIVE', roles: { some: { role: 'ADMIN' } } },
+          });
+          if (activeAdmins <= 1) {
+            throw conflict('The last active administrator cannot be suspended');
+          }
+        }
+        if (target.id === account.userId) {
+          throw conflict('Administrators cannot suspend themselves');
+        }
         const user = await tx.user.update({
           where: { id },
           data: {
@@ -390,40 +412,13 @@ export function createAdminService({ prisma }: { prisma: PrismaClient }): AdminS
         throw conflict('Verification was modified; reload and retry');
       }
       const documentIds = request.links.map((link) => link.documentId);
-      if (parsed.data.decision === 'APPROVE') {
-        const documents = await prisma.document.findMany({
-          where: { id: { in: documentIds } },
-        });
-        const clean =
-          documentIds.length > 0 &&
-          documents.length === documentIds.length &&
-          documents.every((row) => row.scanStatus === 'CLEAN' && row.retiredAt === null);
-        if (!clean) throw badRequest('All submitted documents must be clean and current');
-        if (request.driverId) {
-          const driver = await prisma.driverProfile.findUnique({ where: { id: request.driverId } });
-          if (!driver) throw notFound('Verification subject not found');
-          // A material subject edit clears currentVerificationId, so a stale
-          // revision cannot approve evidence newer than what was reviewed.
-          if (driver.currentVerificationId !== request.id) {
-            throw conflict('Subject changed since submission; reload');
-          }
-          if (!driver.licenseExpiresOn || driver.licenseExpiresOn < todayDate()) {
-            throw badRequest('License is expired');
-          }
-        } else if (request.vehicleId) {
-          const vehicle = await prisma.vehicle.findUnique({ where: { id: request.vehicleId } });
-          if (!vehicle) throw notFound('Verification subject not found');
-          if (vehicle.currentVerificationId !== request.id) {
-            throw conflict('Subject changed since submission; reload');
-          }
-        }
-      }
+      const approve = parsed.data.decision === 'APPROVE';
       const now = new Date();
       const decided = await prisma.$transaction(async (tx) => {
         const updated = await tx.verificationRequest.updateMany({
           where: { id: request.id, status: 'PENDING', version: parsed.data.version },
           data: {
-            status: parsed.data.decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+            status: approve ? 'APPROVED' : 'REJECTED',
             decidedBy: account.userId,
             decidedAt: now,
             reason: parsed.data.reason,
@@ -431,21 +426,58 @@ export function createAdminService({ prisma }: { prisma: PrismaClient }): AdminS
           },
         });
         if (updated.count === 0) throw conflict('Verification was modified; reload and retry');
-        const subject = {
-          verificationStatus: parsed.data.decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-          version: { increment: 1 },
-        } satisfies Prisma.DriverProfileUpdateInput;
-        if (request.driverId) {
-          await tx.driverProfile.update({ where: { id: request.driverId }, data: subject });
+        if (approve) {
+          const documents = await tx.document.findMany({ where: { id: { in: documentIds } } });
+          const clean =
+            documentIds.length > 0 &&
+            documents.length === documentIds.length &&
+            documents.every((row) => row.scanStatus === 'CLEAN' && row.retiredAt === null);
+          if (!clean) throw badRequest('All submitted documents must be clean and current');
+          if (request.driverId) {
+            const driver = await tx.driverProfile.findUnique({ where: { id: request.driverId } });
+            if (!driver) throw notFound('Verification subject not found');
+            if (!driver.licenseExpiresOn || driver.licenseExpiresOn < todayDate()) {
+              throw badRequest('License is expired');
+            }
+            // Re-check currentVerificationId inside the transaction: a material
+            // edit committing mid-decision clears it and must not be overwritten
+            // by an approval of now-invalidated evidence.
+            const outcome = await tx.driverProfile.updateMany({
+              where: { id: driver.id, currentVerificationId: request.id },
+              data: { verificationStatus: 'APPROVED', version: { increment: 1 } },
+            });
+            if (outcome.count === 0) throw conflict('Subject changed since submission; reload');
+          } else if (request.vehicleId) {
+            const vehicle = await tx.vehicle.findUnique({ where: { id: request.vehicleId } });
+            if (!vehicle) throw notFound('Verification subject not found');
+            // Re-check the submitted insurance expiry independently of the
+            // expiry worker, which may be stopped.
+            const insurance = documents.find((row) => row.kind === 'INSURANCE');
+            if (!insurance || !insurance.expiresOn || insurance.expiresOn < todayDate()) {
+              throw badRequest('Insurance document is expired');
+            }
+            const outcome = await tx.vehicle.updateMany({
+              where: { id: vehicle.id, currentVerificationId: request.id },
+              data: { verificationStatus: 'APPROVED', version: { increment: 1 } },
+            });
+            if (outcome.count === 0) throw conflict('Subject changed since submission; reload');
+          }
+        } else if (request.driverId) {
+          const outcome = await tx.driverProfile.updateMany({
+            where: { id: request.driverId, currentVerificationId: request.id },
+            data: { verificationStatus: 'REJECTED', version: { increment: 1 } },
+          });
+          if (outcome.count === 0) throw conflict('Subject changed since submission; reload');
         } else if (request.vehicleId) {
-          await tx.vehicle.update({ where: { id: request.vehicleId }, data: subject });
+          const outcome = await tx.vehicle.updateMany({
+            where: { id: request.vehicleId, currentVerificationId: request.id },
+            data: { verificationStatus: 'REJECTED', version: { increment: 1 } },
+          });
+          if (outcome.count === 0) throw conflict('Subject changed since submission; reload');
         }
         await appendAudit(tx, {
           actorId: account.userId,
-          action:
-            parsed.data.decision === 'APPROVE'
-              ? 'ADMIN_VERIFICATION_APPROVE'
-              : 'ADMIN_VERIFICATION_REJECT',
+          action: approve ? 'ADMIN_VERIFICATION_APPROVE' : 'ADMIN_VERIFICATION_REJECT',
           subjectType: 'verification',
           subjectId: request.id,
           reason: parsed.data.reason,

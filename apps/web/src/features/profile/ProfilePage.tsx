@@ -100,11 +100,16 @@ export function ProfilePage() {
           </Button>
         </form>
         <section className="profile-section">
+          <h2>Your personal vehicles</h2>
+          <p>Register and qualify your own vehicle before using it for a journey.</p>
+          <Link to="/vehicles">Manage your personal vehicles</Link>
+        </section>
+        <section className="profile-section">
           <h2>Driving with DriveHire</h2>
           <p>
             {user.roles.includes('DRIVER')
               ? 'Driver capability is enabled. Qualification review is separate from account access.'
-              : 'Want to drive? Enable driver capability, then complete qualification when onboarding is available.'}
+              : 'Want to drive? Enable driver capability, then complete qualification for administrator review.'}
           </p>
           {!user.roles.includes('DRIVER') && (
             <Button variant="secondary" onClick={() => void enableDriver()} busy={busy}>
@@ -113,10 +118,23 @@ export function ProfilePage() {
           )}
           {user.roles.includes('DRIVER') && (
             <p>
+              <Link to="/driver/qualification">Complete driver qualification</Link>
+              <br />
               <Link to="/driver/availability">Manage your driving schedule</Link>
             </p>
           )}
         </section>
+        {user.roles.includes('ADMIN') && (
+          <section className="profile-section">
+            <h2>Administration</h2>
+            <p>
+              <Link to="/admin/verifications">Review driver and vehicle qualifications</Link>
+            </p>
+            <p>
+              <Link to="/admin/users">Manage user accounts</Link>
+            </p>
+          </section>
+        )}
         <section className="profile-section">
           <h2>Account access</h2>
           <p>Sign out of this session on this device.</p>

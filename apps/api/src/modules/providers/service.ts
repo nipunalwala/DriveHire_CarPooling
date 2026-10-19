@@ -14,18 +14,64 @@ import {
   type VerificationDto,
 } from '@drivehire/contracts';
 import type { Config } from '../../config/env.js';
-import type { Prisma, PrismaClient } from '../../generated/client/client.js';
+import { Prisma, type PrismaClient } from '../../generated/client/client.js';
 import type { ScanAdapter, StorageAdapter } from '../../ports.js';
 import { badRequest, conflict, notFound, HttpError } from '../../errors.js';
 import type { CurrentAccount } from '../accounts/service.js';
 import { sanitizeEvidence, EvidenceTypeError } from './evidence.js';
 import { decryptIdentifier, encryptIdentifier, identifierDigest } from './registration-crypto.js';
-import { toAsyncIterable } from '../../adapters/private-storage.js';
+import {
+  MAX_PRIVATE_EVIDENCE_BYTES,
+  readAll,
+  toAsyncIterable,
+} from '../../adapters/private-storage.js';
 
 const PageQuerySchema = z.strictObject({
   page: z.coerce.number().int().min(1).max(2_147_483_647).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+// Public driver search accepts optional eligibility/time filters; malformed
+// city/rate values are ignored (as before) while a malformed time range is a
+// request error regardless of how many drivers exist.
+const DriverSearchQuerySchema = PageQuerySchema.extend({
+  cityId: z.string().optional(),
+  startsAt: z.string().optional(),
+  endsAt: z.string().optional(),
+  maxHourlyRateMinor: z.string().optional(),
+});
+
+const SUPERSEDED_REASON =
+  'Superseded by a material profile edit; resubmit after correcting the details.';
+
+/**
+ * A material subject edit invalidates any in-flight verification. Resolve the
+ * superseded PENDING revision inside the same transaction as the subject edit so
+ * the partial unique pending index no longer blocks the owner from resubmitting;
+ * the old revision is kept as immutable history (stale decisions then conflict).
+ */
+async function resolveSupersededPending(
+  tx: Prisma.TransactionClient,
+  subject: { driverId: string } | { vehicleId: string },
+): Promise<void> {
+  const pending = await tx.verificationRequest.findFirst({
+    where:
+      'driverId' in subject
+        ? { driverId: subject.driverId, status: 'PENDING' }
+        : { vehicleId: subject.vehicleId, status: 'PENDING' },
+    select: { id: true },
+  });
+  if (!pending) return;
+  await tx.verificationRequest.update({
+    where: { id: pending.id },
+    data: {
+      status: 'REJECTED',
+      decidedAt: new Date(),
+      reason: SUPERSEDED_REASON,
+      version: { increment: 1 },
+    },
+  });
+}
 
 // `${today}T00:00:00Z` compares cleanly against @db.Date values.
 function isoDateOnly(value: Date): string {
@@ -36,6 +82,17 @@ function todayDate(): Date {
 }
 function parseDateOnly(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`);
+}
+// BR02: qualification dates expire at the owning city's local midnight, so a
+// license/insurance is compared against the calendar date in the persisted
+// city timezone rather than the UTC date (which can lag the home city).
+function localDateOnly(timeZone: string, at: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(at);
 }
 
 export interface DocumentContent {
@@ -152,7 +209,23 @@ export function createProvidersService({
     verificationStatus: string;
     acceptingBookings: boolean;
     version: number;
+    currentVerificationId?: string | null;
   };
+
+  // The administrator's decision reason is owner-private: it is surfaced only
+  // for the subject's current REJECTED revision and never on public DTOs.
+  async function rejectionReason(
+    currentVerificationId: string | null | undefined,
+    status: string,
+  ): Promise<string | undefined> {
+    if (status !== 'REJECTED' || !currentVerificationId) return undefined;
+    const request = await prisma.verificationRequest.findUnique({
+      where: { id: currentVerificationId },
+      select: { status: true, reason: true },
+    });
+    if (!request || request.status !== 'REJECTED' || !request.reason) return undefined;
+    return request.reason;
+  }
 
   async function driverPrivate(driver: DriverRow, displayName: string): Promise<DriverPrivateDto> {
     const dto: DriverPrivateDto = {
@@ -170,6 +243,8 @@ export function createProvidersService({
       licenseCountry: driver.licenseCountry,
       licenseExpiresOn: driver.licenseExpiresOn ? isoDateOnly(driver.licenseExpiresOn) : null,
     };
+    const reason = await rejectionReason(driver.currentVerificationId, driver.verificationStatus);
+    if (reason !== undefined) dto.verificationReason = reason;
     return dto;
   }
 
@@ -190,9 +265,10 @@ export function createProvidersService({
     verificationStatus: string;
     archivedAt: Date | null;
     version: number;
+    currentVerificationId?: string | null;
   };
 
-  function toVehiclePrivate(vehicle: VehicleRow): VehiclePrivateDto {
+  async function toVehiclePrivate(vehicle: VehicleRow): Promise<VehiclePrivateDto> {
     const dto: VehiclePrivateDto = {
       id: vehicle.id,
       ownerId: vehicle.ownerId,
@@ -214,6 +290,8 @@ export function createProvidersService({
     };
     if (vehicle.description !== null) dto.description = vehicle.description;
     if (vehicle.archivedAt) dto.archivedAt = vehicle.archivedAt.toISOString();
+    const reason = await rejectionReason(vehicle.currentVerificationId, vehicle.verificationStatus);
+    if (reason !== undefined) dto.verificationReason = reason;
     return dto;
   }
 
@@ -258,17 +336,22 @@ export function createProvidersService({
     contentType: string;
     scanStatus: 'PENDING' | 'CLEAN' | 'REJECTED';
   }> {
-    if (bytes.byteLength > 5 * 1024 * 1024) {
+    if (bytes.byteLength > MAX_PRIVATE_EVIDENCE_BYTES) {
       throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Upload exceeds 5 MiB');
     }
     let sanitized;
     try {
-      sanitized = sanitizeEvidence(declaredContentType, bytes);
+      sanitized = await sanitizeEvidence(declaredContentType, bytes);
     } catch (error) {
       if (error instanceof EvidenceTypeError) {
         throw new HttpError(415, 'UNSUPPORTED_MEDIA_TYPE', error.message);
       }
       throw error;
+    }
+    // Re-encoding can inflate an image; keep the stored object within the same
+    // ceiling enforced by the DB CHECK and the storage adapter.
+    if (sanitized.bytes.byteLength > MAX_PRIVATE_EVIDENCE_BYTES) {
+      throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'Upload exceeds 5 MiB');
     }
     const stored = await storage.putQuarantined(
       toAsyncIterable(sanitized.bytes),
@@ -331,9 +414,13 @@ export function createProvidersService({
       }
 
       try {
-        const saved = existing
-          ? await prisma.driverProfile.update({
-              where: { id: existing.id },
+        if (existing) {
+          // Atomic version CAS: two concurrent same-version writes cannot both
+          // apply (no lost update). A material edit also resolves the superseded
+          // PENDING revision in the same transaction.
+          const saved = await prisma.$transaction(async (tx) => {
+            const outcome = await tx.driverProfile.updateMany({
+              where: { id: existing.id, version: existing.version },
               data: {
                 licenseCiphertext: ciphertext,
                 licenseDigest: digest,
@@ -345,18 +432,27 @@ export function createProvidersService({
                 // Material license edits invalidate any prior approval.
                 ...(material ? { verificationStatus: 'DRAFT', currentVerificationId: null } : {}),
               },
-            })
-          : await prisma.driverProfile.create({
-              data: {
-                userId: account.userId,
-                licenseCiphertext: ciphertext,
-                licenseDigest: digest,
-                licenseCountry: data.licenseCountry,
-                licenseExpiresOn: parseDateOnly(data.licenseExpiresOn),
-                cityId: data.serviceCityId,
-                hourlyRateMinor: data.hourlyRateMinor,
-              },
             });
+            if (outcome.count === 0) {
+              throw conflict('Driver profile was modified; reload and retry');
+            }
+            if (material) await resolveSupersededPending(tx, { driverId: existing.id });
+            return tx.driverProfile.findUniqueOrThrow({ where: { id: existing.id } });
+          });
+          const user = await prisma.user.findUniqueOrThrow({ where: { id: account.userId } });
+          return driverPrivate(saved as DriverRow, user.displayName);
+        }
+        const saved = await prisma.driverProfile.create({
+          data: {
+            userId: account.userId,
+            licenseCiphertext: ciphertext,
+            licenseDigest: digest,
+            licenseCountry: data.licenseCountry,
+            licenseExpiresOn: parseDateOnly(data.licenseExpiresOn),
+            cityId: data.serviceCityId,
+            hourlyRateMinor: data.hourlyRateMinor,
+          },
+        });
         const user = await prisma.user.findUniqueOrThrow({ where: { id: account.userId } });
         return driverPrivate(saved as DriverRow, user.displayName);
       } catch (error) {
@@ -380,9 +476,15 @@ export function createProvidersService({
           throw conflict('Driver approval and an unexpired license are required to list');
         }
       }
-      const saved = await prisma.driverProfile.update({
-        where: { id: driver.id },
-        data: { acceptingBookings: parsed.data.enabled, version: { increment: 1 } },
+      const saved = await prisma.$transaction(async (tx) => {
+        const outcome = await tx.driverProfile.updateMany({
+          where: { id: driver.id, version: parsed.data.version },
+          data: { acceptingBookings: parsed.data.enabled, version: { increment: 1 } },
+        });
+        if (outcome.count === 0) {
+          throw conflict('Driver profile was modified; reload and retry');
+        }
+        return tx.driverProfile.findUniqueOrThrow({ where: { id: driver.id } });
       });
       const user = await prisma.user.findUniqueOrThrow({ where: { id: account.userId } });
       return driverPrivate(saved as DriverRow, user.displayName);
@@ -504,9 +606,9 @@ export function createProvidersService({
     },
 
     async searchDrivers(query) {
-      const parsed = PageQuerySchema.safeParse(query);
+      const parsed = DriverSearchQuerySchema.safeParse(query);
       if (!parsed.success) throw badRequest('Request validation failed');
-      const { cityId, startsAt, endsAt, maxHourlyRateMinor } = query;
+      const { cityId, startsAt, endsAt, maxHourlyRateMinor } = parsed.data;
       if ((startsAt === undefined) !== (endsAt === undefined)) {
         throw badRequest('startsAt and endsAt must be supplied together');
       }
@@ -515,83 +617,78 @@ export function createProvidersService({
         maxHourlyRateMinor && /^\d+$/.test(maxHourlyRateMinor)
           ? Number(maxHourlyRateMinor)
           : undefined;
-      const baseWhere = {
-        verificationStatus: 'APPROVED',
-        acceptingBookings: true,
-        licenseExpiresOn: { gte: todayDate() },
-        ...(cityFilter ? { cityId: cityFilter } : {}),
-        ...(rateFilter !== undefined && rateFilter <= 100_000_000
-          ? { hourlyRateMinor: { lte: rateFilter } }
-          : {}),
-      };
-      // DriverProfile has no relation to User, so suspended drivers are
-      // excluded by intersecting the qualifying profiles with ACTIVE users.
-      const candidates = await prisma.driverProfile.findMany({
-        where: baseWhere,
-        select: { userId: true },
-      });
-      const activeUsers = await prisma.user.findMany({
-        where: { id: { in: candidates.map((row) => row.userId) }, status: 'ACTIVE' },
-        select: { id: true },
-      });
-      const where = { ...baseWhere, userId: { in: activeUsers.map((row) => row.id) } };
-      const [total, rows] = await Promise.all([
-        prisma.driverProfile.count({ where }),
-        prisma.driverProfile.findMany({
-          where,
-          orderBy: { updatedAt: 'desc' },
-          skip: (parsed.data.page - 1) * parsed.data.pageSize,
-          take: parsed.data.pageSize,
-        }),
-      ]);
-      const pageUsers = await prisma.user.findMany({
-        where: { id: { in: rows.map((row) => row.userId) } },
-        select: { id: true, displayName: true },
-      });
-      const displayNames = new Map(pageUsers.map((row) => [row.id, row.displayName]));
-      const meta: PageMeta = { page: parsed.data.page, pageSize: parsed.data.pageSize, total };
-      const data: DriverDto[] = [];
-      for (const row of rows) {
-        if (startsAt && endsAt) {
-          // Public hire needs a covering AVAILABLE window and no live hold.
-          const start = new Date(startsAt);
-          const end = new Date(endsAt);
-          if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
-            throw badRequest('Invalid time range');
-          }
-          const covered = await prisma.availabilityWindow.findFirst({
-            where: {
-              driverId: row.id,
-              kind: 'AVAILABLE',
-              removedAt: null,
-              startsAt: { lte: start },
-              endsAt: { gte: end },
-            },
-            select: { id: true },
-          });
-          if (!covered) continue;
-          const blocked = await prisma.resourceReservation.findFirst({
-            where: {
-              driverId: row.id,
-              releasedAt: null,
-              startsAt: { lt: end },
-              endsAt: { gt: start },
-            },
-            select: { id: true },
-          });
-          if (blocked) continue;
+      let range: { start: Date; end: Date } | undefined;
+      if (startsAt && endsAt) {
+        const start = new Date(startsAt);
+        const end = new Date(endsAt);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+          throw badRequest('Invalid time range');
         }
-        data.push({
-          id: row.id,
-          displayName: displayNames.get(row.userId) ?? '',
-          cityId: row.cityId as string,
-          verificationStatus: 'APPROVED',
-          hourlyRateMinor: row.hourlyRateMinor as number,
-          currency: 'INR',
-          acceptingBookings: row.acceptingBookings,
-          version: row.version,
-        });
+        range = { start, end };
       }
+      // Eligibility, the ACTIVE-user intersection and the optional time-window
+      // filter are all evaluated in the database so COUNT/OFFSET/LIMIT page the
+      // true match set (later eligible drivers stay reachable and meta.total is
+      // accurate) rather than filtering after slicing.
+      const conditions: Prisma.Sql[] = [
+        Prisma.sql`d.verification_status = 'APPROVED'`,
+        Prisma.sql`d.accepting_bookings = true`,
+        Prisma.sql`d.license_expires_on >= (${new Date()}::timestamptz AT TIME ZONE c.timezone)::date`,
+        Prisma.sql`u.status = 'ACTIVE'`,
+      ];
+      if (cityFilter) conditions.push(Prisma.sql`d.city_id = ${cityFilter}::uuid`);
+      if (rateFilter !== undefined && rateFilter <= 100_000_000) {
+        conditions.push(Prisma.sql`d.hourly_rate_minor <= ${rateFilter}`);
+      }
+      if (range) {
+        conditions.push(Prisma.sql`EXISTS (
+          SELECT 1 FROM availability_windows aw
+          WHERE aw.driver_id = d.id AND aw.kind = 'AVAILABLE' AND aw.removed_at IS NULL
+            AND aw.starts_at <= ${range.start} AND aw.ends_at >= ${range.end})`);
+        conditions.push(Prisma.sql`NOT EXISTS (
+          SELECT 1 FROM resource_reservations rr
+          WHERE rr.driver_id = d.id AND rr.released_at IS NULL
+            AND rr.starts_at < ${range.end} AND rr.ends_at > ${range.start})`);
+      }
+      const whereSql = Prisma.join(conditions, ' AND ');
+      const countRows = await prisma.$queryRaw<{ total: bigint }[]>(Prisma.sql`
+        SELECT COUNT(*)::bigint AS total
+        FROM driver_profiles d
+        JOIN users u ON u.id = d.user_id
+        JOIN cities c ON c.id = d.city_id
+        WHERE ${whereSql}`);
+      const total = Number(countRows[0]?.total ?? 0);
+      const rows = await prisma.$queryRaw<
+        {
+          id: string;
+          displayName: string;
+          cityId: string;
+          hourlyRateMinor: number;
+          acceptingBookings: boolean;
+          version: number;
+        }[]
+      >(Prisma.sql`
+        SELECT d.id, u.display_name AS "displayName", d.city_id AS "cityId",
+               d.hourly_rate_minor AS "hourlyRateMinor",
+               d.accepting_bookings AS "acceptingBookings", d.version
+        FROM driver_profiles d
+        JOIN users u ON u.id = d.user_id
+        JOIN cities c ON c.id = d.city_id
+        WHERE ${whereSql}
+        ORDER BY d.updated_at DESC, d.id DESC
+        OFFSET ${(parsed.data.page - 1) * parsed.data.pageSize}
+        LIMIT ${parsed.data.pageSize}`);
+      const data: DriverDto[] = rows.map((row) => ({
+        id: row.id,
+        displayName: row.displayName,
+        cityId: row.cityId,
+        verificationStatus: 'APPROVED',
+        hourlyRateMinor: row.hourlyRateMinor,
+        currency: 'INR',
+        acceptingBookings: row.acceptingBookings,
+        version: row.version,
+      }));
+      const meta: PageMeta = { page: parsed.data.page, pageSize: parsed.data.pageSize, total };
       return { success: true, data, meta };
     },
 
@@ -602,10 +699,18 @@ export function createProvidersService({
           id,
           verificationStatus: 'APPROVED',
           acceptingBookings: true,
-          licenseExpiresOn: { gte: todayDate() },
         },
       });
       if (!row) throw notFound('Driver not found');
+      const city = row.cityId
+        ? await prisma.city.findUnique({ where: { id: row.cityId }, select: { timezone: true } })
+        : null;
+      const localToday = city
+        ? localDateOnly(city.timezone)
+        : new Date().toISOString().slice(0, 10);
+      if (!row.licenseExpiresOn || isoDateOnly(row.licenseExpiresOn) < localToday) {
+        throw notFound('Driver not found');
+      }
       const user = await prisma.user.findUnique({ where: { id: row.userId } });
       if (!user || user.status !== 'ACTIVE') throw notFound('Driver not found');
       return {
@@ -676,32 +781,43 @@ export function createProvidersService({
         throw conflict('Material vehicle changes are blocked by active commitments');
       }
       try {
-        const updates: Prisma.VehicleUncheckedUpdateInput = {
-          registrationDigest: digest,
-          make: data.make,
-          model: data.model,
-          year: data.year,
-          category: data.category,
-          seats: data.seats,
-          transmission: data.transmission,
-          fuelType: data.fuelType,
-          cityId: data.cityId,
-          description: data.description ?? null,
-          version: { increment: 1 },
-        };
-        if (digest !== vehicle.registrationDigest) {
-          updates.registrationCiphertext = encryptIdentifier(
-            key,
-            registrationAad(digest),
-            data.registrationNumber,
-          );
-        }
-        if (material) {
-          // Material edits invalidate any prior approval.
-          updates.verificationStatus = 'DRAFT';
-          updates.currentVerificationId = null;
-        }
-        const saved = await prisma.vehicle.update({ where: { id: vehicle.id }, data: updates });
+        const saved = await prisma.$transaction(async (tx) => {
+          const updates: Prisma.VehicleUncheckedUpdateInput = {
+            registrationDigest: digest,
+            make: data.make,
+            model: data.model,
+            year: data.year,
+            category: data.category,
+            seats: data.seats,
+            transmission: data.transmission,
+            fuelType: data.fuelType,
+            cityId: data.cityId,
+            description: data.description ?? null,
+            version: { increment: 1 },
+          };
+          if (digest !== vehicle.registrationDigest) {
+            updates.registrationCiphertext = encryptIdentifier(
+              key,
+              registrationAad(digest),
+              data.registrationNumber,
+            );
+          }
+          if (material) {
+            // Material edits invalidate any prior approval.
+            updates.verificationStatus = 'DRAFT';
+            updates.currentVerificationId = null;
+          }
+          // Atomic version CAS prevents a lost update between concurrent writers.
+          const outcome = await tx.vehicle.updateMany({
+            where: { id: vehicle.id, version: vehicle.version },
+            data: updates,
+          });
+          if (outcome.count === 0) {
+            throw conflict('Vehicle was modified; reload and retry');
+          }
+          if (material) await resolveSupersededPending(tx, { vehicleId: vehicle.id });
+          return tx.vehicle.findUniqueOrThrow({ where: { id: vehicle.id } });
+        });
         return toVehiclePrivate(saved as VehicleRow);
       } catch (error) {
         if (isUniqueViolation(error)) throw conflict('Vehicle registration already exists');
@@ -746,7 +862,7 @@ export function createProvidersService({
           take: parsed.data.pageSize,
         }),
       ]);
-      const data = rows.map((row) => toVehiclePrivate(row as VehicleRow));
+      const data = await Promise.all(rows.map((row) => toVehiclePrivate(row as VehicleRow)));
       const meta: PageMeta = { page: parsed.data.page, pageSize: parsed.data.pageSize, total };
       return { success: true, data, meta };
     },
@@ -895,9 +1011,17 @@ export function createProvidersService({
       if (!account || (account.userId !== ownerId && !isAdmin))
         throw notFound('Document not found');
       if (document.scanStatus !== 'CLEAN') throw notFound('Document not found');
-      const source = await storage.authorizedRead(document.objectKey);
+      // Read the object fully (bounded by the 5 MiB evidence ceiling) before any
+      // bytes are written, so a missing/unreadable clean object becomes a clean
+      // 404 instead of an unhandled stream error that could crash the process.
+      let bytes: Buffer;
+      try {
+        bytes = await readAll(await storage.authorizedRead(document.objectKey));
+      } catch {
+        throw notFound('Document not found');
+      }
       return {
-        stream: Readable.from(source),
+        stream: Readable.from([bytes]),
         contentType: document.contentType,
         filename: `${document.kind.toLowerCase()}-${document.id}`,
       };
@@ -968,27 +1092,36 @@ export function createProvidersService({
     },
 
     async expireQualifications() {
-      const today = todayDate();
-      await prisma.driverProfile.updateMany({
-        where: { verificationStatus: 'APPROVED', licenseExpiresOn: { lt: today } },
-        data: { verificationStatus: 'EXPIRED', acceptingBookings: false },
-      });
-      const expiredInsurance = await prisma.document.findMany({
-        where: {
-          kind: 'INSURANCE',
-          scanStatus: 'CLEAN',
-          expiresOn: { lt: today },
-          vehicleId: { not: null },
-        },
-        select: { vehicleId: true },
-      });
-      const vehicleIds = [...new Set(expiredInsurance.map((row) => row.vehicleId as string))];
-      if (vehicleIds.length > 0) {
-        await prisma.vehicle.updateMany({
-          where: { id: { in: vehicleIds }, verificationStatus: 'APPROVED' },
-          data: { verificationStatus: 'EXPIRED' },
-        });
-      }
+      const now = new Date();
+      // BR02: qualification dates expire at the owning city's local midnight.
+      await prisma.$executeRaw(Prisma.sql`
+        UPDATE driver_profiles d
+        SET verification_status = 'EXPIRED', accepting_bookings = false
+        FROM cities c
+        WHERE c.id = d.city_id
+          AND d.verification_status = 'APPROVED'
+          AND d.license_expires_on IS NOT NULL
+          AND d.license_expires_on < (${now}::timestamptz AT TIME ZONE c.timezone)::date`);
+      // Only the immutable approved revision's reviewed insurance governs a
+      // vehicle. A newer upload that no administrator has reviewed cannot
+      // extend an approval whose reviewed evidence has since expired.
+      await prisma.$executeRaw(Prisma.sql`
+        UPDATE vehicles v
+        SET verification_status = 'EXPIRED'
+        WHERE v.verification_status = 'APPROVED'
+          AND v.current_verification_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM verification_requests vr
+            JOIN cities c ON c.id = v.city_id
+            JOIN verification_documents vd ON vd.verification_id = vr.id
+            JOIN documents ins ON ins.id = vd.document_id
+            WHERE vr.id = v.current_verification_id
+              AND vr.status = 'APPROVED'
+              AND ins.kind = 'INSURANCE'
+              AND ins.retired_at IS NULL
+              AND ins.expires_on IS NOT NULL
+              AND ins.expires_on < (${now}::timestamptz AT TIME ZONE c.timezone)::date)`);
     },
   };
 }
