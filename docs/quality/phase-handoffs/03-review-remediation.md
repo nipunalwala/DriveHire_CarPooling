@@ -253,3 +253,19 @@ not fixed, per the instruction to fix Important findings only.
 - This is backend-only evidence. Whole-phase acceptance, the Codex frontend E2E
   and the final `03-accounts.md` archive remain outstanding. No phase completion,
   push or production claim is made.
+
+### Cookie mutation ordering follow-up (Codex frontend)
+
+The independent stale-refresh finding also affected HttpOnly cookies: a delayed
+real refresh for account A could overwrite account B's login cookie and restore A
+after reload. The free OpenCode test owner reproduced this as an actual browser
+failure before the fix. Codex serialized refresh, login and logout through the
+existing cross-tab Web Lock plus a local promise queue, retaining generation
+checks for stale account snapshots. Failed actions release the queue.
+
+Observed verification: four deferred-action unit regressions passed; the real
+cookie regression passed unchanged on desktop/mobile (2/2); the authentication
+and cookie browser suites passed together (18/18). The subsequent repository
+unit/contract run passed (56 unit tests and one contract test), and typecheck,
+lint and production build passed. Final whole-phase handoff follows integrated
+verification; these results do not imply Phase04 or later phases are complete.

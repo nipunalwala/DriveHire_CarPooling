@@ -66,10 +66,22 @@ async function setup(fetcher: (input: RequestInfo | URL, init?: RequestInit) => 
       React.createElement('span', { 'data-testid': 'ready' }, String(ready)),
       React.createElement(
         'button',
-        { onClick: () => void login(NEW_EMAIL, 'password123456') },
+        {
+          onClick: () => {
+            void login(NEW_EMAIL, 'password123456').catch(() => {});
+          },
+        },
         'login',
       ),
-      React.createElement('button', { onClick: () => void logout() }, 'logout'),
+      React.createElement(
+        'button',
+        {
+          onClick: () => {
+            void logout().catch(() => {});
+          },
+        },
+        'logout',
+      ),
     );
   };
 
@@ -84,7 +96,7 @@ async function settle(rtl: typeof import('@testing-library/react')) {
   });
 }
 
-it('keeps the new user when a late startup refresh 401 arrives after login', async () => {
+it('serializes login behind a held startup refresh and ignores a late 401', async () => {
   const startup = deferred<Response>();
   const login = deferred<Response>();
   const { rtl, fetch } = await setup((input) => {
@@ -98,23 +110,24 @@ it('keeps the new user when a late startup refresh 401 arrives after login', asy
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/refresh'), expect.anything()),
   );
   rtl.fireEvent.click(rtl.screen.getByText('login'));
-  await rtl.waitFor(() =>
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/login'), expect.anything()),
-  );
-
-  login.resolve(json({ success: true, data: token('new-token', NEW_EMAIL, NEW_USER_ID) }));
-  await rtl.waitFor(() => expect(rtl.screen.getByTestId('user').textContent).toBe(NEW_EMAIL));
+  await settle(rtl);
+  expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining('/auth/login'), expect.anything());
 
   startup.resolve(
     json({ success: false, error: { message: 'Unauthorized', code: 'UNAUTHENTICATED' } }, 401),
   );
-  await settle(rtl);
+  await rtl.waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/login'), expect.anything()),
+  );
+
+  login.resolve(json({ success: true, data: token('new-token', NEW_EMAIL, NEW_USER_ID) }));
+  await rtl.waitFor(() => expect(rtl.screen.getByTestId('user').textContent).toBe(NEW_EMAIL));
 
   expect(rtl.screen.getByTestId('user').textContent).toBe(NEW_EMAIL);
   expect(rtl.screen.getByTestId('ready').textContent).toBe('true');
 });
 
-it('keeps the new user when a late old-account startup refresh succeeds after login', async () => {
+it('serializes login behind a held startup refresh and ignores the old account', async () => {
   const startup = deferred<Response>();
   const login = deferred<Response>();
   const { rtl, fetch } = await setup((input) => {
@@ -128,21 +141,23 @@ it('keeps the new user when a late old-account startup refresh succeeds after lo
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/refresh'), expect.anything()),
   );
   rtl.fireEvent.click(rtl.screen.getByText('login'));
+  await settle(rtl);
+  expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining('/auth/login'), expect.anything());
+
+  startup.resolve(json({ success: true, data: token('old-token', OLD_EMAIL, OLD_USER_ID) }));
   await rtl.waitFor(() =>
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/login'), expect.anything()),
   );
+  expect(rtl.screen.getByTestId('user').textContent).not.toBe(OLD_EMAIL);
 
   login.resolve(json({ success: true, data: token('new-token', NEW_EMAIL, NEW_USER_ID) }));
   await rtl.waitFor(() => expect(rtl.screen.getByTestId('user').textContent).toBe(NEW_EMAIL));
-
-  startup.resolve(json({ success: true, data: token('old-token', OLD_EMAIL, OLD_USER_ID) }));
-  await settle(rtl);
 
   expect(rtl.screen.getByTestId('user').textContent).toBe(NEW_EMAIL);
   expect(rtl.screen.getByTestId('ready').textContent).toBe('true');
 });
 
-it('does not resurrect a user when a late startup refresh succeeds after logout', async () => {
+it('serializes logout behind a held startup refresh and does not resurrect the old account', async () => {
   const startup = deferred<Response>();
   const { rtl, fetch } = await setup((input) => {
     const url = String(input);
@@ -156,16 +171,58 @@ it('does not resurrect a user when a late startup refresh succeeds after logout'
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/refresh'), expect.anything()),
   );
   rtl.fireEvent.click(rtl.screen.getByText('logout'));
+  await settle(rtl);
+  expect(fetch).not.toHaveBeenCalledWith(
+    expect.stringContaining('/auth/logout'),
+    expect.anything(),
+  );
+
+  startup.resolve(json({ success: true, data: token('old-token', OLD_EMAIL, OLD_USER_ID) }));
   await rtl.waitFor(() =>
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/logout'), expect.anything()),
   );
-  await settle(rtl);
+  await rtl.waitFor(() => expect(rtl.screen.getByTestId('ready').textContent).toBe('true'));
+
+  expect(rtl.screen.getByTestId('user').textContent).toBe('none');
   expect(rtl.screen.getByTestId('ready').textContent).toBe('true');
+});
+
+it('lets a valid login retry proceed after an earlier login fails', async () => {
+  let attempts = 0;
+  const { rtl, fetch } = await setup((input) => {
+    const url = String(input);
+    if (url.endsWith('/auth/refresh'))
+      return Promise.resolve(
+        json({ success: false, error: { message: 'Unauthorized', code: 'UNAUTHENTICATED' } }, 401),
+      );
+    if (url.endsWith('/auth/login')) {
+      attempts += 1;
+      if (attempts === 1)
+        return Promise.resolve(
+          json(
+            { success: false, error: { message: 'Invalid credentials', code: 'UNAUTHENTICATED' } },
+            401,
+          ),
+        );
+      return Promise.resolve(
+        json({ success: true, data: token('new-token', NEW_EMAIL, NEW_USER_ID) }),
+      );
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  await rtl.waitFor(() => expect(rtl.screen.getByTestId('ready').textContent).toBe('true'));
   expect(rtl.screen.getByTestId('user').textContent).toBe('none');
 
-  startup.resolve(json({ success: true, data: token('old-token', OLD_EMAIL, OLD_USER_ID) }));
+  rtl.fireEvent.click(rtl.screen.getByText('login'));
+  await rtl.waitFor(() =>
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/login'), expect.anything()),
+  );
   await settle(rtl);
-
   expect(rtl.screen.getByTestId('user').textContent).toBe('none');
+  expect(rtl.screen.getByTestId('ready').textContent).toBe('true');
+
+  rtl.fireEvent.click(rtl.screen.getByText('login'));
+  await rtl.waitFor(() => expect(rtl.screen.getByTestId('user').textContent).toBe(NEW_EMAIL));
   expect(rtl.screen.getByTestId('ready').textContent).toBe('true');
 });

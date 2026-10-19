@@ -15,6 +15,23 @@ const listeners = new Set<(state: AuthState) => void>();
 let refreshPromise: Promise<boolean> | undefined;
 let channel: BroadcastChannel | undefined;
 let authGeneration = 0;
+let authQueue: Promise<void> = Promise.resolve();
+// All cookie-changing actions share one queue, including browsers without Web Locks.
+// The existing lock name also coordinates refresh/login/logout across supported tabs.
+function coordinateAuth<T>(operation: () => Promise<T>): Promise<T> {
+  const execute = async () => {
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      return await navigator.locks.request('drivehire-refresh', operation);
+    }
+    return await operation();
+  };
+  const queued = authQueue.then(execute, execute);
+  authQueue = queued.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queued;
+}
 function publish(next: AuthState) {
   state = next;
   for (const listener of listeners) listener(next);
@@ -47,15 +64,7 @@ async function refresh(): Promise<boolean> {
       return false;
     }
   };
-  // Web Locks serialize cookie rotation across tabs. Each request sees the
-  // latest HttpOnly cookie; tokens never enter persistent browser storage.
-  const coordinated = async (): Promise<boolean> => {
-    if (typeof navigator !== 'undefined' && navigator.locks) {
-      return await navigator.locks.request('drivehire-refresh', perform);
-    }
-    return await perform();
-  };
-  refreshPromise = coordinated().finally(() => {
+  refreshPromise = coordinateAuth(perform).finally(() => {
     refreshPromise = undefined;
   });
   return refreshPromise;
@@ -81,19 +90,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       ...snapshot,
       async login(email, password) {
-        acceptSession(
-          await api.request('/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ email, password }),
-          }),
-        );
+        // Invalidate earlier snapshot reads as soon as the user starts a new login.
+        authGeneration++;
+        await coordinateAuth(async () => {
+          try {
+            acceptSession(
+              await api.request('/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ email, password }),
+              }),
+            );
+          } catch (cause) {
+            if (!state.ready) publish({ user: state.user, ready: true });
+            throw cause;
+          }
+        });
       },
       async logout() {
-        // Keep the session visible if server logout fails; never promise revocation
-        // until the backend has acknowledged it.
-        await api.request('/auth/logout', { method: 'POST' });
-        clearSession();
-        channel?.postMessage('signed-out');
+        authGeneration++;
+        await coordinateAuth(async () => {
+          try {
+            // Revoke the latest cookie after any pending rotation has finished.
+            await api.request('/auth/logout', { method: 'POST' });
+            clearSession();
+            channel?.postMessage('signed-out');
+          } catch (cause) {
+            // Keep a live session visible when server revocation fails.
+            if (!state.ready) publish({ user: state.user, ready: true });
+            throw cause;
+          }
+        });
       },
       setUser(user) {
         authGeneration++;
