@@ -113,3 +113,34 @@ only the seven owned files. No push, merge or deploy was performed.
 - Whole-branch Phase03 review, the Codex frontend E2E and the final
   `03-accounts.md` archive remain outstanding; this record makes no whole-phase
   or production claim.
+
+## 2026-10-19 resumed frontend independent review
+
+The independent Codex frontend reviewer found one Important issue: a delayed startup
+refresh could clear a later successful login, overwrite it with an older account,
+or resurrect a session after logout. Free-only OpenCode wrote three focused
+AuthProvider regressions. Codex observed all three fail against the original
+behavior, added auth-generation checks before accepting refresh results, and
+observed all three pass. No credentials are persisted by this change.
+
+Verification in the relocated checkout D:/CODING/DriveHire/DriveHire_CarPooling:
+
+- Focused AuthProvider regression: 3/3 RED, then 3/3 GREEN.
+- Complete npm test: 12 unit files / 46 tests and 1 contract test passed.
+- Focused frontend ESLint passed. Frontend TypeScript passed after correcting
+  draft Phase04 form payload types; those uncommitted screens are separate work.
+- Existing authentication/schedule browser suite: 16/16 desktop/mobile passed
+  after repairing npm workspace junctions left pointing to the old D:/DriveHire
+  path. That browser run started before the auth-generation fix was finalized;
+  it is baseline evidence, not post-fix browser acceptance.
+
+Final: fixed stale startup refresh overwriting newer auth state — three controlled
+response-order regressions RED->GREEN; unit suite 46/46 and contract 1/1.
+Final: minor (deferred): clearing an existing phone omits it from PATCH because the
+current contract does not support removal; the interface needs explicit guidance.
+Final: minor (deferred): login lacks a direct verification/resend entry point for
+someone who closed registration before verifying their email.
+
+The review was static frontend-only; backend final review and post-fix browser
+verification remain required before Phase03 acceptance. No push or phase completion
+claim is made by this checkpoint.

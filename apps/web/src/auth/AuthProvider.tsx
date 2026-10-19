@@ -14,26 +14,35 @@ let state: AuthState = { user: null, ready: false };
 const listeners = new Set<(state: AuthState) => void>();
 let refreshPromise: Promise<boolean> | undefined;
 let channel: BroadcastChannel | undefined;
+let authGeneration = 0;
 function publish(next: AuthState) {
   state = next;
   for (const listener of listeners) listener(next);
 }
 function acceptSession(value: unknown) {
   const session = TokenResultSchema.parse(value);
+  authGeneration++;
   api.setAccessToken(session.accessToken);
   publish({ user: session.user, ready: true });
 }
 function clearSession() {
+  authGeneration++;
   api.setAccessToken(null);
   publish({ user: null, ready: true });
 }
 async function refresh(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
+  const generation = authGeneration;
   const perform = async () => {
+    if (generation !== authGeneration) return Boolean(state.user);
     try {
-      acceptSession(await api.request('/auth/refresh', { method: 'POST' }));
+      const result = await api.request('/auth/refresh', { method: 'POST' });
+      // A later login, logout or profile update owns the current snapshot.
+      if (generation !== authGeneration) return Boolean(state.user);
+      acceptSession(result);
       return true;
     } catch {
+      if (generation !== authGeneration) return Boolean(state.user);
       clearSession();
       return false;
     }
@@ -87,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         channel?.postMessage('signed-out');
       },
       setUser(user) {
+        authGeneration++;
         publish({ user, ready: true });
       },
     }),
