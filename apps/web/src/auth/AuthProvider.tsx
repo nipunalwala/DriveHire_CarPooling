@@ -1,3 +1,4 @@
+import { clearJourneyDrafts } from '../features/journeys/draft-memory.js';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { TokenResultSchema, type UserDto } from '@drivehire/contracts';
@@ -112,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try {
             // Revoke the latest cookie after any pending rotation has finished.
             await api.request('/auth/logout', { method: 'POST' });
+            clearJourneyDrafts();
             clearSession();
             channel?.postMessage('signed-out');
           } catch (cause) {

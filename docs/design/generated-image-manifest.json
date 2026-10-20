@@ -1,0 +1,62 @@
+{
+  "assets": [
+    {
+      "id": "driver-hiring",
+      "prompt": "Create one original editorial raster illustration for the DriveHire website's driver-hiring service. Landscape 3:2 composition. A generic unbranded compact personal car parked beside a leafy Indian city street, with one adult professional driver standing near the open front door and the vehicle's owner standing nearby, calmly discussing their planned journey. This is a service-concept illustration, not a photograph of actual providers or inventory. Sophisticated textured gouache/editorial painting, deep teal and muted olive foliage, warm ivory background, understated terracotta details, natural morning light. Visually clear at 320px wide. Keep the complete people and main car silhouette within the central 75 percent so a responsive crop is safe. No embedded text, no labels, no logos, no readable license plate, no badges, no documents, no maps, no payment imagery, no testimonial or rating, no photographic provider portrait. Composition feels calm and practical, elegant hand-painted materials and subtle natural texture, not vector clipart or glossy 3D.",
+      "source": "C:\\Users\\nipun\\.codex\\generated_images\\01a155ee-40b6-7533-b587-8c82837b948c\\exec-2bd5e969-e412-4ca2-a62c-606af8c7addb.png",
+      "tool": "image_gen.imagegen",
+      "date": "2026-10-20",
+      "original": {
+        "path": "/images/generated/driver-hiring-original.png",
+        "width": 1536,
+        "height": 1024
+      },
+      "outputs": [
+        {
+          "path": "/images/generated/driver-hiring-384.webp",
+          "width": 384,
+          "height": 256
+        },
+        {
+          "path": "/images/generated/driver-hiring-768.webp",
+          "width": 768,
+          "height": 512
+        }
+      ],
+      "conversion": "Sharp resize without crop; WebP quality78 effort4. Original retained.",
+      "placement": "Landing service section; 3:2 landscape, object-fit contain. Copy outside image.",
+      "alt": "",
+      "decorative": true,
+      "disclosure": "Illustrations show service concepts, not actual providers or listings."
+    },
+    {
+      "id": "shared-journey",
+      "prompt": "Create one original editorial raster illustration for the DriveHire website's shared-journey carpool service. Landscape 3:2 composition, matching a sophisticated textured gouache/editorial painting in deep teal, muted olive, warm ivory and small terracotta accents. A generic unbranded compact personal car at a leafy Indian city meeting point with three generic adult travel companions: a host at the driver's side and two passengers greeting each other beside the car, one carrying a modest everyday bag. Calm, equal and friendly interaction, natural morning light, realistic adult proportions, elegant hand-painted natural texture, not vector clipart or glossy 3D. This is an illustrative service concept, not actual platform customers or inventory. Visually clear at 320px width. Keep people and main car silhouette in central 75 percent for safe responsive cropping. No text or labels, no logos, no readable license plates, no badges, no ratings or testimonials, no documents, no maps or navigation, no money or payment imagery.",
+      "source": "C:\\Users\\nipun\\.codex\\generated_images\\01a155ee-40b6-7533-b587-8c82837b948c\\exec-44c6c891-da48-4366-9239-b7b6bbcd930d.png",
+      "tool": "image_gen.imagegen",
+      "date": "2026-10-20",
+      "original": {
+        "path": "/images/generated/shared-journey-original.png",
+        "width": 1536,
+        "height": 1024
+      },
+      "outputs": [
+        {
+          "path": "/images/generated/shared-journey-384.webp",
+          "width": 384,
+          "height": 256
+        },
+        {
+          "path": "/images/generated/shared-journey-768.webp",
+          "width": 768,
+          "height": 512
+        }
+      ],
+      "conversion": "Sharp resize without crop; WebP quality78 effort4. Original retained.",
+      "placement": "Landing service section; 3:2 landscape, object-fit contain. Copy outside image.",
+      "alt": "",
+      "decorative": true,
+      "disclosure": "Illustrations show service concepts, not actual providers or listings."
+    }
+  ]
+}

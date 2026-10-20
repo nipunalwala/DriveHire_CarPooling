@@ -82,3 +82,31 @@ it('preserves pagination metadata for server-backed lists', async () => {
     meta: { page: 2, pageSize: 20, total: 25 },
   });
 });
+
+it('refreshes_current_roles_once_after_forbidden_without_losing_mutation_key', async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(
+      json(
+        { success: false, error: { code: 'FORBIDDEN', message: 'Driver capability was removed' } },
+        403,
+      ),
+    );
+  vi.stubGlobal('fetch', fetcher);
+  const client = new ApiClient();
+  const refresh = vi.fn().mockResolvedValue(true);
+  client.setRefreshHandler(refresh);
+  await expect(
+    client.request('/drivers/me/availability', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'same-attempt' },
+      body: JSON.stringify({ window: 'test' }),
+    }),
+  ).rejects.toMatchObject({ status: 403 });
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  for (const [, options] of fetcher.mock.calls)
+    expect(new Headers((options as RequestInit).headers).get('Idempotency-Key')).toBe(
+      'same-attempt',
+    );
+});

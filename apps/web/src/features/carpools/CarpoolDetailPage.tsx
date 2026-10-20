@@ -1,3 +1,8 @@
+import {
+  readJourneyDraft,
+  rememberJourneyDraft,
+  forgetJourneyDraft,
+} from '../journeys/draft-memory.js';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
@@ -26,9 +31,16 @@ export async function ownSeats() {
   return rows;
 }
 export function CarpoolDetailPage() {
+  const { id = '' } = useParams();
+  const { user } = useAuth();
+  return <CarpoolDetailContent key={`${id}:${user?.id ?? 'public'}`} />;
+}
+function CarpoolDetailContent() {
   const { id = '' } = useParams(),
     { user } = useAuth(),
     names = useCityNames();
+  const journeyKey = `seat:${id}`;
+  const [retained] = useState(() => readJourneyDraft(user?.id, journeyKey));
   const [ride, setRide] = useState<CarpoolDto>(),
     [trip, setTrip] = useState<TripDto>(),
     [participation, setParticipation] = useState<SeatRequestDto>(),
@@ -41,10 +53,31 @@ export function CarpoolDetailPage() {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [attempt, setAttempt] = useState(0),
-    [seats, setSeats] = useState('1'),
-    [message, setMessage] = useState(''),
+    [seats, setSeats] = useState(retained.seats ?? '1'),
+    [message, setMessage] = useState(retained.message ?? ''),
     [now, setNow] = useState(0);
-  const key = useRef<{ fingerprint: string; value: string } | undefined>(undefined);
+  const key = useRef<{ fingerprint: string; value: string } | undefined>(
+    retained.joinKey
+      ? {
+          fingerprint: JSON.stringify({
+            seats: Number(retained.seats ?? '1'),
+            ...(retained.message?.trim() ? { message: retained.message.trim() } : {}),
+          }),
+          value: retained.joinKey,
+        }
+      : undefined,
+  );
+  function rememberSeatDraft(nextSeats: string, nextMessage: string) {
+    const form = new FormData();
+    form.set('seats', nextSeats);
+    form.set('message', nextMessage);
+    const fingerprint = JSON.stringify({
+      seats: Number(nextSeats),
+      ...(nextMessage.trim() ? { message: nextMessage.trim() } : {}),
+    });
+    if (key.current?.fingerprint === fingerprint) form.set('joinKey', key.current.value);
+    rememberJourneyDraft(user?.id, journeyKey, form);
+  }
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
@@ -72,6 +105,7 @@ export function CarpoolDetailPage() {
   function apply(result: Awaited<ReturnType<typeof snapshot>>) {
     setRide(result.current);
     setParticipation(result.mine);
+    if (result.mine) forgetJourneyDraft(user?.id, journeyKey);
     setTrip(result.currentTrip);
     setRoster(result.participants?.data.map((row) => SeatRequestSchema.parse(row)) ?? []);
     setRosterTotal(result.participants?.meta.total ?? 0);
@@ -146,6 +180,7 @@ export function CarpoolDetailPage() {
       fingerprint = JSON.stringify(body);
     if (key.current?.fingerprint !== fingerprint)
       key.current = { fingerprint, value: crypto.randomUUID() };
+    rememberSeatDraft(seats, message);
     setBusy(true);
     setError('');
     setNotice('');
@@ -157,6 +192,7 @@ export function CarpoolDetailPage() {
           body: JSON.stringify(body),
         }),
       );
+      forgetJourneyDraft(user?.id, journeyKey);
       const result = await snapshot();
       apply(result);
       setNotice(
@@ -275,14 +311,20 @@ export function CarpoolDetailPage() {
                   max={ride.availableSeats}
                   required
                   value={seats}
-                  onChange={(event) => setSeats(event.target.value)}
+                  onChange={(event) => {
+                    setSeats(event.target.value);
+                    rememberSeatDraft(event.target.value, message);
+                  }}
                 />
                 <Field
                   id="join-message"
                   label="Message to host (optional)"
                   maxLength={500}
                   value={message}
-                  onChange={(event) => setMessage(event.target.value)}
+                  onChange={(event) => {
+                    setMessage(event.target.value);
+                    rememberSeatDraft(seats, event.target.value);
+                  }}
                 />
                 <p>
                   {money(Number(seats) * ride.pricePerSeatMinor)} estimated total for {seats} seats

@@ -41,7 +41,12 @@ export function JourneyLayout({
                 </>
               )}
               {user.roles.includes('ADMIN') && (
-                <Link to="/admin/operations">Journey administration</Link>
+                <>
+                  <Link to="/admin/operations">Journey administration</Link>
+                  <Link to="/admin/users">User accounts</Link>
+                  <Link to="/admin/verifications">Qualification reviews</Link>
+                  <Link to="/admin/audit">Administrative audit</Link>
+                </>
               )}
             </>
           )}

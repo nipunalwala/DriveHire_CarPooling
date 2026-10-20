@@ -189,7 +189,7 @@ form {
   background: white;
   color: var(--ink);
   caret-color: var(--accent);
-  border: 1px solid #a8b8ae;
+  border: 1px solid #6b8175;
   border-radius: 6px;
   padding: 11px 13px;
 }
@@ -513,7 +513,7 @@ form {
   min-width: 0;
   min-height: 48px;
   padding: 10px 12px;
-  border: 1px solid #8da99f;
+  border: 1px solid #6b8175;
   border-radius: 7px;
   color: var(--ink);
   background: white;
@@ -703,4 +703,8 @@ form {
     grid-template-columns: 1fr;
     gap: 0.25rem;
   }
+}
+/* Programmatic route announcements do not frame non-interactive headings. */
+main h1:focus {
+  outline: none;
 }

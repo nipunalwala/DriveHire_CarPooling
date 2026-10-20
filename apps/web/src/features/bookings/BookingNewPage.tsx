@@ -1,3 +1,9 @@
+import { useAuth } from '../../auth/AuthProvider.js';
+import {
+  readJourneyDraft,
+  rememberJourneyDraft,
+  forgetJourneyDraft,
+} from '../journeys/draft-memory.js';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -23,9 +29,12 @@ export function BookingNewPage() {
 
 function BookingForm({ driverId }: { driverId: string }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const journeyKey = `hire:${driverId}`;
+  const [retained] = useState(() => readJourneyDraft(user?.id, journeyKey));
   const [driver, setDriver] = useState<DriverDto>();
   const [vehicles, setVehicles] = useState<VehiclePrivateDto[]>([]);
-  const [selectedVehicle, setSelectedVehicle] = useState('');
+  const [selectedVehicle, setSelectedVehicle] = useState(retained.vehicleId ?? '');
   const [loading, setLoading] = useState(Boolean(driverId));
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
@@ -87,6 +96,7 @@ function BookingForm({ driverId }: { driverId: string }) {
     event.preventDefault();
     if (busy || loading || loadError || !driver) return;
     const data = new FormData(event.currentTarget);
+    rememberJourneyDraft(user?.id, journeyKey, data);
     setError('');
     setEstimate(undefined);
     const start = new Date(String(data.get('startsAt') ?? ''));
@@ -147,6 +157,7 @@ function BookingForm({ driverId }: { driverId: string }) {
           body: JSON.stringify({ quoteId: estimate.quote.id }),
         }),
       );
+      forgetJourneyDraft(user?.id, journeyKey);
       navigate(`/app/bookings/${booking.id}`);
     } catch (cause) {
       if (cause instanceof ApiError && [403, 404, 409, 410, 422].includes(cause.status)) {
@@ -205,10 +216,17 @@ function BookingForm({ driverId }: { driverId: string }) {
               before requesting a driver.
             </EmptyState>
           )}
+          {Object.keys(retained).length > 0 && (
+            <p role="status">
+              Your previous journey details are restored in this tab. Review a new estimate before
+              sending a request.
+            </p>
+          )}
           {error && <ErrorState message={error} />}
           <form
             onSubmit={(event) => void review(event)}
-            onChange={() => {
+            onChange={(event) => {
+              rememberJourneyDraft(user?.id, journeyKey, new FormData(event.currentTarget));
               setEstimate(undefined);
               setError('');
             }}
@@ -234,6 +252,7 @@ function BookingForm({ driverId }: { driverId: string }) {
               </SelectField>
               <div className="form-columns">
                 <Field
+                  defaultValue={retained.startsAt}
                   id="booking-start"
                   name="startsAt"
                   label="Starts at"
@@ -241,6 +260,7 @@ function BookingForm({ driverId }: { driverId: string }) {
                   required
                 />
                 <Field
+                  defaultValue={retained.endsAt}
                   id="booking-end"
                   name="endsAt"
                   label="Ends at"
@@ -253,8 +273,16 @@ function BookingForm({ driverId }: { driverId: string }) {
                 hour before departure. Journeys may last 1–720 hours, within the next 180 days.
               </p>
               <div className="form-columns">
-                <CitySelect name="originCityId" label="Origin" />
-                <CitySelect name="destinationCityId" label="Destination" />
+                <CitySelect
+                  name="originCityId"
+                  label="Origin"
+                  defaultValue={retained.originCityId ?? ''}
+                />
+                <CitySelect
+                  name="destinationCityId"
+                  label="Destination"
+                  defaultValue={retained.destinationCityId ?? ''}
+                />
               </div>
               <Field
                 id="booking-passengers"
@@ -263,7 +291,7 @@ function BookingForm({ driverId }: { driverId: string }) {
                 type="number"
                 min="1"
                 max={vehicle ? vehicle.seats - 1 : 11}
-                defaultValue="1"
+                defaultValue={retained.passengers ?? '1'}
                 required
                 hint="Include yourself; leave one seat for the hired driver."
               />

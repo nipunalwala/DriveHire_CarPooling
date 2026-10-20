@@ -1,0 +1,43 @@
+.landing-page .service-summary {
+  max-width: none;
+  gap: clamp(24px, 4vw, 56px);
+  border-top: none;
+  padding-top: 0;
+}
+.landing-page .service-summary article {
+  min-width: 0;
+}
+.landing-page .service-summary img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+.landing-page .service-summary h2 {
+  font-size: 24px;
+}
+.landing-page .service-summary p {
+  font-size: 16px;
+  margin-bottom: 16px;
+}
+.landing-page .service-summary a {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-weight: 600;
+}
+.landing-page > .small-text {
+  font-size: 13px;
+  max-width: 75ch;
+  margin-block: 24px 0;
+}
+@media (max-width: 640px) {
+  .landing-page .service-summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+  }
+}

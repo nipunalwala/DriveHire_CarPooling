@@ -153,6 +153,8 @@ export function ProfilePage() {
               <Link to="/admin/users">Manage user accounts</Link>
               <br />
               <Link to="/admin/operations">Inspect bookings and trips</Link>
+              <br />
+              <Link to="/admin/audit">Inspect administrative audit</Link>
             </p>
           </section>
         )}

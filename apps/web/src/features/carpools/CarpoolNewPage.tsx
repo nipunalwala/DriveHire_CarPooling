@@ -1,3 +1,8 @@
+import {
+  readJourneyDraft,
+  rememberJourneyDraft,
+  forgetJourneyDraft,
+} from '../journeys/draft-memory.js';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -30,6 +35,8 @@ export function CarpoolNewPage() {
   const { id } = useParams();
   const { user } = useAuth(),
     navigate = useNavigate();
+  const journeyKey = `carpool:${id ?? 'new'}`;
+  const [retained] = useState(() => readJourneyDraft(user?.id, journeyKey));
   const [vehicles, setVehicles] = useState<VehiclePrivateDto[]>([]),
     [draft, setDraft] = useState<CarpoolDto>(),
     [loading, setLoading] = useState(true),
@@ -37,6 +44,9 @@ export function CarpoolNewPage() {
     [error, setError] = useState(''),
     [loadError, setLoadError] = useState(''),
     [uncertain, setUncertain] = useState(false),
+    [conflict, setConflict] = useState(false),
+    [latestVersion, setLatestVersion] = useState<number>(),
+    [notice, setNotice] = useState(''),
     [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
@@ -74,8 +84,9 @@ export function CarpoolNewPage() {
   }, [id, attempt]);
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || uncertain) return;
+    if (busy || uncertain || conflict) return;
     const form = new FormData(event.currentTarget);
+    rememberJourneyDraft(user?.id, journeyKey, form);
     setError('');
     setBusy(true);
     try {
@@ -90,7 +101,7 @@ export function CarpoolNewPage() {
         seatsOffered: Number(form.get('seatsOffered')),
         pricePerSeatMinor: paise(String(form.get('price'))),
         joinMode: 'INSTANT',
-        ...(draft ? { version: draft.version } : {}),
+        ...(draft ? { version: latestVersion ?? draft.version } : {}),
       });
       let response: unknown;
       try {
@@ -100,6 +111,7 @@ export function CarpoolNewPage() {
         });
       } catch (cause) {
         if (!(cause instanceof ApiError) || cause.status === 0) setUncertain(true);
+        if (id && cause instanceof ApiError && cause.status === 409) setConflict(true);
         throw cause;
       }
       let ride: CarpoolDto;
@@ -111,12 +123,36 @@ export function CarpoolNewPage() {
           'The save result could not be confirmed. Check hosted rides before saving again.',
         );
       }
+      forgetJourneyDraft(user?.id, journeyKey);
       navigate(`/carpools/${ride.id}`);
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
           : 'Could not save the draft. Your entries have been kept.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function reloadDraft() {
+    if (!id || busy) return;
+    setBusy(true);
+    try {
+      const latest = CarpoolSchema.parse(await api.request<unknown>(`/carpools/${id}`));
+      if (latest.status !== 'DRAFT')
+        throw Error('This ride is no longer a draft. Check your hosted rides.');
+      setLatestVersion(latest.version);
+      setConflict(false);
+      setError('');
+      setNotice(
+        'The latest saved version is loaded. Your entries are kept; review them before saving.',
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Could not reload the draft. Your entries are kept.',
       );
     } finally {
       setBusy(false);
@@ -155,16 +191,35 @@ export function CarpoolNewPage() {
         <form
           key={draft?.version ?? 'new'}
           onSubmit={(event) => void save(event)}
+          onChange={(event) =>
+            rememberJourneyDraft(user?.id, journeyKey, new FormData(event.currentTarget))
+          }
           aria-label="Carpool draft"
         >
           <h2>Ride details</h2>
+          {Object.keys(retained).length > 0 && (
+            <p role="status">
+              Your previous entries are restored in this tab. Review them before saving.
+            </p>
+          )}
           {error && <ErrorState message={error} />}
+          {notice && <p role="status">{notice}</p>}
+          {conflict && (
+            <Button
+              type="button"
+              variant="secondary"
+              busy={busy}
+              onClick={() => void reloadDraft()}
+            >
+              Reload draft, keep my entries
+            </Button>
+          )}
           <SelectField
             id="carpool-vehicle"
             name="vehicleId"
             label="Your vehicle"
             required
-            defaultValue={draft?.vehicleId ?? ''}
+            defaultValue={retained.vehicleId ?? draft?.vehicleId ?? ''}
           >
             <option value="" disabled>
               Choose an approved vehicle
@@ -179,12 +234,12 @@ export function CarpoolNewPage() {
             <CitySelect
               name="originCityId"
               label="Origin"
-              defaultValue={draft?.originCityId ?? ''}
+              defaultValue={retained.originCityId ?? draft?.originCityId ?? ''}
             />
             <CitySelect
               name="destinationCityId"
               label="Destination"
-              defaultValue={draft?.destinationCityId ?? ''}
+              defaultValue={retained.destinationCityId ?? draft?.destinationCityId ?? ''}
             />
           </div>
           <Field
@@ -193,7 +248,7 @@ export function CarpoolNewPage() {
             label="Pickup note"
             required
             maxLength={300}
-            defaultValue={draft?.pickupNote ?? ''}
+            defaultValue={retained.pickupNote ?? draft?.pickupNote ?? ''}
             hint="Use a public meeting point. Avoid private contact details."
           />
           <Field
@@ -202,7 +257,7 @@ export function CarpoolNewPage() {
             label="Dropoff note"
             required
             maxLength={300}
-            defaultValue={draft?.dropoffNote ?? ''}
+            defaultValue={retained.dropoffNote ?? draft?.dropoffNote ?? ''}
           />
           <div className="form-columns">
             <Field
@@ -211,7 +266,7 @@ export function CarpoolNewPage() {
               label="Starts at"
               type="datetime-local"
               required
-              defaultValue={draft ? local(draft.startsAt) : ''}
+              defaultValue={retained.startsAt ?? (draft ? local(draft.startsAt) : '')}
             />
             <Field
               id="carpool-ends"
@@ -219,7 +274,7 @@ export function CarpoolNewPage() {
               label="Ends at"
               type="datetime-local"
               required
-              defaultValue={draft ? local(draft.endsAt) : ''}
+              defaultValue={retained.endsAt ?? (draft ? local(draft.endsAt) : '')}
             />
           </div>
           <p className="small-text">
@@ -235,7 +290,7 @@ export function CarpoolNewPage() {
               min={1}
               max={11}
               required
-              defaultValue={draft?.seatsOffered ?? 1}
+              defaultValue={retained.seatsOffered ?? draft?.seatsOffered ?? 1}
               hint="Leave one vehicle seat for yourself as driver."
             />
             <Field
@@ -247,7 +302,9 @@ export function CarpoolNewPage() {
               max="1000000"
               step="0.01"
               required
-              defaultValue={draft ? (draft.pricePerSeatMinor / 100).toFixed(2) : '0.00'}
+              defaultValue={
+                retained.price ?? (draft ? (draft.pricePerSeatMinor / 100).toFixed(2) : '0.00')
+              }
             />
           </div>
           <p>Passengers join instantly. {paymentNotice}</p>
@@ -261,7 +318,7 @@ export function CarpoolNewPage() {
               before creating another draft.
             </p>
           ) : (
-            <Button type="submit" busy={busy}>
+            <Button type="submit" busy={busy} disabled={conflict}>
               Save draft
             </Button>
           )}

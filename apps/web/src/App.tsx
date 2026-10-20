@@ -1,3 +1,5 @@
+import { AuditPage } from './features/admin/audit/AuditPage.js';
+import { LandingPage } from './features/landing/LandingPage.js';
 import { CarpoolsPage, HostedCarpoolsPage } from './features/carpools/CarpoolsPage.js';
 import { CarpoolNewPage } from './features/carpools/CarpoolNewPage.js';
 import { CarpoolDetailPage } from './features/carpools/CarpoolDetailPage.js';
@@ -6,7 +8,7 @@ import { useEffect, lazy, Suspense } from 'react';
 import { BookingsPage, BookingDetailPage } from './features/bookings/BookingsPage.js';
 import { BookingNewPage } from './features/bookings/BookingNewPage.js';
 import { DriversPage, DriverDetailPage } from './features/drivers/DriversPage.js';
-import { Link, Route, Routes, useLocation } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { MoveRight } from 'lucide-react';
 import { AuthProvider, ProtectedRoute, useAuth } from './auth/AuthProvider.js';
 import { LoginPage } from './features/auth/LoginPage.js';
@@ -35,7 +37,21 @@ function Shell() {
   const location = useLocation();
   useEffect(() => {
     document.title = `${location.pathname === '/' ? 'Driver hiring & shared journeys' : location.pathname.slice(1).split('-').join(' ')} · DriveHire`;
-    document.getElementById('main')?.focus({ preventScroll: true });
+    const main = document.getElementById('main');
+    if (!main) return;
+    const focusHeading = () => {
+      const heading = main.querySelector('h1');
+      if (!heading) return false;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+      return true;
+    };
+    if (focusHeading()) return;
+    const observer = new MutationObserver(() => {
+      if (focusHeading()) observer.disconnect();
+    });
+    observer.observe(main, { childList: true, subtree: true });
+    return () => observer.disconnect();
   }, [location.pathname]);
   return (
     <>
@@ -65,6 +81,24 @@ function Shell() {
       <main id="main" tabIndex={-1}>
         <Suspense fallback={<p role="status">Loading journey…</p>}>
           <Routes>
+            <Route path="/app/profile" element={<Navigate to="/profile" replace />} />
+            <Route path="/app/vehicles" element={<Navigate to="/vehicles" replace />} />
+            <Route
+              path="/app/driver/profile"
+              element={<Navigate to="/driver/qualification" replace />}
+            />
+            <Route
+              path="/app/driver/availability"
+              element={<Navigate to="/driver/availability" replace />}
+            />
+            <Route
+              path="/admin/audit"
+              element={
+                <ProtectedRoute>
+                  <AuditPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/carpools" element={<CarpoolsPage />} />
             <Route path="/carpools/:id" element={<CarpoolDetailPage />} />
             <Route
@@ -149,38 +183,7 @@ function Shell() {
             />
             <Route path="/drivers" element={<DriversPage />} />
             <Route path="/drivers/:id" element={<DriverDetailPage />} />
-            <Route
-              path="/"
-              element={
-                <section className="landing-intro">
-                  <h1>
-                    Your journey.
-                    <br />A little more together.
-                  </h1>
-                  <p>
-                    Hire a driver for your own vehicle, or share a scheduled journey with a carpool.
-                    Start with an account, then choose your next step.
-                  </p>
-                  <Link className="button button-primary" to={user ? '/profile' : '/register'}>
-                    {user ? 'Go to your profile' : 'Create your account'}
-                    <MoveRight size={19} aria-hidden="true" />
-                  </Link>
-                  <div className="service-summary">
-                    <div>
-                      <h2>Driver hiring</h2>
-                      <p>A driver for your approved personal vehicle.</p>
-                      <Link to="/drivers">Find a driver</Link>
-                    </div>
-                    <div>
-                      <h2>Shared journeys</h2>
-                      <p>A seat in a scheduled, instant-join carpool.</p>
-                      <Link to="/carpools">Find a carpool</Link>
-                    </div>
-                  </div>
-                  <p className="small-text">Payment not collected by DriveHire.</p>
-                </section>
-              }
-            />
+            <Route path="/" element={<LandingPage />} />
             <Route
               path="/vehicles"
               element={

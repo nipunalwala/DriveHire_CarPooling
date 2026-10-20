@@ -15,3 +15,5 @@ Owner override on 2026-10-19: skip OpenCode for all remaining phases. Codex now
 owns backend, contracts, tests and frontend directly. Retain Impeccable for UI,
 independent phase review, verification, main/owner commits, phase pushes and CI
 inspection. This supersedes the earlier OpenCode/free-model ownership split.
+
+Owner override on2026-10-20: use OpenCode for all remaining backend/contracts/backend-test/restore work with verified FREE models only, including background/small-model calls. Codex directly owns frontend/UI/UX and browser integration. This supersedes the2026-10-19 no-OpenCode override. Continue authorized phases without routine approvals; preserve independent phase acceptance, owner/main commits and phase pushes with actual CI inspection. No production deployment or development-data reset.

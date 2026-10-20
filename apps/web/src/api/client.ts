@@ -85,7 +85,12 @@ export class ApiClient {
     } catch {
       throw new ApiError('Check your connection and try again. Your changes have not been saved.');
     }
-    if (response.status === 401 && !path.startsWith('/auth/') && retry && this.refreshHandler) {
+    if (
+      [401, 403].includes(response.status) &&
+      !path.startsWith('/auth/') &&
+      retry &&
+      this.refreshHandler
+    ) {
       if (await this.refreshHandler()) return this.envelope<T>(path, init, false);
     }
     const envelope = (await response.json().catch(() => null)) as {
