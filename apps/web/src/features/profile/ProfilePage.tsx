@@ -83,6 +83,12 @@ export function ProfilePage() {
           <p>
             <Link to="/app/bookings">View your bookings</Link>
           </p>
+          <p>
+            <Link to="/carpools">Find a carpool</Link>
+          </p>
+          <p>
+            <Link to="/app/seats">View your carpool seats</Link>
+          </p>
         </section>
         <form onSubmit={(event) => void save(event)} noValidate aria-label="Edit profile">
           <h2>Personal details</h2>
@@ -132,6 +138,8 @@ export function ProfilePage() {
               <Link to="/driver/availability">Manage your driving schedule</Link>
               <br />
               <Link to="/app/driver/bookings">Review driver requests</Link>
+              <br />
+              <Link to="/app/carpools">Manage hosted carpools</Link>
             </p>
           )}
         </section>

@@ -392,12 +392,10 @@ export function createTripsService({ prisma }: { prisma: PrismaClient }): TripsS
                   where: { carpoolId: trip.carpoolId, releasedAt: null },
                   data: { releasedAt: now },
                 });
-                if (toStatus === 'COMPLETED') {
-                  await tx.carpool.updateMany({
-                    where: { id: trip.carpoolId },
-                    data: { status: 'COMPLETED', version: { increment: 1 } },
-                  });
-                }
+                await tx.carpool.updateMany({
+                  where: { id: trip.carpoolId },
+                  data: { status: parentStatus, version: { increment: 1 } },
+                });
               }
             }
 

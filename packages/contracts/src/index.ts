@@ -27,3 +27,4 @@ export * from './auth.js';
 export * from './cities.js';
 export * from './providers.js';
 export * from './bookings.js';
+export * from './carpools.js';

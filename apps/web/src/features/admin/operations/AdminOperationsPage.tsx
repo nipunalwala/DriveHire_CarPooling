@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BookingSchema, TripSchema, type BookingDto, type TripDto } from '@drivehire/contracts';
+import {
+  BookingSchema,
+  TripSchema,
+  CarpoolSchema,
+  type CarpoolDto,
+  type BookingDto,
+  type TripDto,
+} from '@drivehire/contracts';
 import { api, ApiError } from '../../../api/client.js';
 import { useAuth } from '../../../auth/AuthProvider.js';
 import {
@@ -16,7 +23,7 @@ import { JourneyLayout, journeyTime, money, paymentNotice } from '../../bookings
 export function AdminOperationsPage() {
   const { user } = useAuth();
   const allowed = Boolean(user?.roles.includes('ADMIN'));
-  const [kind, setKind] = useState<'bookings' | 'trips'>('bookings');
+  const [kind, setKind] = useState<'bookings' | 'trips' | 'carpools'>('bookings');
   const [status, setStatus] = useState('');
   const [overdue, setOverdue] = useState(false);
   const [from, setFrom] = useState('');
@@ -24,7 +31,7 @@ export function AdminOperationsPage() {
   const [dateBounds, setDateBounds] = useState({ from: '', to: '' });
   const [dateError, setDateError] = useState('');
   const [page, setPage] = useState(1);
-  const [rows, setRows] = useState<(BookingDto | TripDto)[]>([]);
+  const [rows, setRows] = useState<(BookingDto | TripDto | CarpoolDto)[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -34,7 +41,7 @@ export function AdminOperationsPage() {
     let active = true;
     const query = new URLSearchParams({ page: String(page), pageSize: '20' });
     if (status) query.set('status', status);
-    if (kind === 'bookings') {
+    if (kind !== 'trips') {
       if (dateBounds.from) query.set('from', dateBounds.from);
       if (dateBounds.to) query.set('to', dateBounds.to);
     }
@@ -43,7 +50,11 @@ export function AdminOperationsPage() {
       .requestPage<unknown>(`/admin/${kind}?${query.toString()}`)
       .then((result) => {
         const parsed = result.data.map((row) =>
-          kind === 'bookings' ? BookingSchema.parse(row) : TripSchema.parse(row),
+          kind === 'bookings'
+            ? BookingSchema.parse(row)
+            : kind === 'carpools'
+              ? CarpoolSchema.parse(row)
+              : TripSchema.parse(row),
         );
         if (active) {
           setRows(parsed);
@@ -72,19 +83,21 @@ export function AdminOperationsPage() {
     setError('');
   }
   const statuses =
-    kind === 'bookings'
-      ? ['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'EXPIRED', 'COMPLETED', 'FAILED']
-      : [
-          'SCHEDULED',
-          'ASSIGNED',
-          'STARTED',
-          'IN_TRANSIT',
-          'COMPLETED',
-          'CANCELLED',
-          'REJECTED',
-          'EXPIRED',
-          'FAILED',
-        ];
+    kind === 'carpools'
+      ? ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED', 'EXPIRED', 'FAILED']
+      : kind === 'bookings'
+        ? ['PENDING', 'CONFIRMED', 'REJECTED', 'CANCELLED', 'EXPIRED', 'COMPLETED', 'FAILED']
+        : [
+            'SCHEDULED',
+            'ASSIGNED',
+            'STARTED',
+            'IN_TRANSIT',
+            'COMPLETED',
+            'CANCELLED',
+            'REJECTED',
+            'EXPIRED',
+            'FAILED',
+          ];
   return (
     <JourneyLayout
       title="Journey administration"
@@ -109,6 +122,19 @@ export function AdminOperationsPage() {
               }}
             >
               Bookings
+            </Button>
+            <Button
+              variant={kind === 'carpools' ? 'primary' : 'secondary'}
+              aria-pressed={kind === 'carpools'}
+              onClick={() => {
+                beginLoad();
+                setKind('carpools');
+                setAttempt((n) => n + 1);
+                setStatus('');
+                setPage(1);
+              }}
+            >
+              Carpools
             </Button>
             <Button
               variant={kind === 'trips' ? 'primary' : 'secondary'}
@@ -141,7 +167,7 @@ export function AdminOperationsPage() {
               </option>
             ))}
           </SelectField>
-          {kind === 'bookings' && (
+          {kind !== 'trips' && (
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -227,12 +253,26 @@ export function AdminOperationsPage() {
                           <p>
                             {money(row.totalMinor)} · Estimate. {paymentNotice}
                           </p>
+                        ) : 'pricePerSeatMinor' in row ? (
+                          <p>
+                            {money(row.pricePerSeatMinor)} per seat · {paymentNotice}
+                          </p>
                         ) : (
                           row.incidentFlag && <p>Incident flagged</p>
                         )}
                         <p className="small-text">Reference: {row.id}</p>
-                        <Link className="button button-secondary" to={`/app/${kind}/${row.id}`}>
-                          Open {kind === 'bookings' ? 'booking' : 'trip'}
+                        <Link
+                          className="button button-secondary"
+                          to={
+                            kind === 'carpools' ? `/carpools/${row.id}` : `/app/${kind}/${row.id}`
+                          }
+                        >
+                          Open{' '}
+                          {kind === 'bookings'
+                            ? 'booking'
+                            : kind === 'carpools'
+                              ? 'carpool'
+                              : 'trip'}
                         </Link>
                       </li>
                     ))}

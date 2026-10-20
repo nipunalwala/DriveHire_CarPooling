@@ -13527,6 +13527,13 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 100000000
+          },
+          "passengerDisplayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "readOnly": true,
+            "description": "Display name provided only in the authorized host or administrator participant roster; no contact or evidence data."
           }
         },
         "required": [

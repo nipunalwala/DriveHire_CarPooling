@@ -675,3 +675,32 @@ form {
   flex: none;
   accent-color: #166453;
 }
+
+/* Saved journey facts stay aligned without turning each fact into a panel. */
+.record-facts {
+  display: grid;
+  gap: 1rem;
+  margin-block: 1.5rem;
+}
+.record-facts > div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.7fr) minmax(0, 1.3fr);
+  gap: 0.75rem;
+}
+.record-facts dt {
+  color: var(--muted, #526a64);
+}
+.record-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.journey-page .profile-content > .status-badge {
+  justify-self: start;
+  width: fit-content;
+}
+@media (max-width: 600px) {
+  .record-facts > div {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}

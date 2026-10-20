@@ -1,3 +1,7 @@
+import { CarpoolsPage, HostedCarpoolsPage } from './features/carpools/CarpoolsPage.js';
+import { CarpoolNewPage } from './features/carpools/CarpoolNewPage.js';
+import { CarpoolDetailPage } from './features/carpools/CarpoolDetailPage.js';
+import { SeatsPage } from './features/seats/SeatsPage.js';
 import { useEffect, lazy, Suspense } from 'react';
 import { BookingsPage, BookingDetailPage } from './features/bookings/BookingsPage.js';
 import { BookingNewPage } from './features/bookings/BookingNewPage.js';
@@ -61,6 +65,40 @@ function Shell() {
       <main id="main" tabIndex={-1}>
         <Suspense fallback={<p role="status">Loading journey…</p>}>
           <Routes>
+            <Route path="/carpools" element={<CarpoolsPage />} />
+            <Route path="/carpools/:id" element={<CarpoolDetailPage />} />
+            <Route
+              path="/app/carpools"
+              element={
+                <ProtectedRoute>
+                  <HostedCarpoolsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/carpools/new"
+              element={
+                <ProtectedRoute>
+                  <CarpoolNewPage key="new" />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/carpools/:id/edit"
+              element={
+                <ProtectedRoute>
+                  <CarpoolNewPage key="edit" />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/seats"
+              element={
+                <ProtectedRoute>
+                  <SeatsPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/app/trips/:id"
               element={
@@ -131,16 +169,15 @@ function Shell() {
                     <div>
                       <h2>Driver hiring</h2>
                       <p>A driver for your approved personal vehicle.</p>
+                      <Link to="/drivers">Find a driver</Link>
                     </div>
                     <div>
                       <h2>Shared journeys</h2>
                       <p>A seat in a scheduled, instant-join carpool.</p>
+                      <Link to="/carpools">Find a carpool</Link>
                     </div>
                   </div>
-                  <p className="small-text">
-                    Booking and carpool journeys are being built. Payment is not collected by
-                    DriveHire.
-                  </p>
+                  <p className="small-text">Payment not collected by DriveHire.</p>
                 </section>
               }
             />

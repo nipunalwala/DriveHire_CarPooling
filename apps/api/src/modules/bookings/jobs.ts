@@ -1,3 +1,4 @@
+import { reconcileCarpools } from '../carpools/jobs.js';
 import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '../../generated/client/client.js';
 import { withResourceLocks } from './locks.js';
@@ -456,7 +457,8 @@ export async function expireBookings(requestedAt: Date, prisma: PrismaClient): P
       ...activeOverdue.map((trip) => trip.bookingId!),
     ]);
     for (const id of activeCandidates) await flagActiveIncident(prisma, id);
-    return expired;
+    // Historical entrypoint now reconciles both supported journey kinds under one lease.
+    return expired + (await reconcileCarpools(prisma));
   } finally {
     await releaseLease(prisma, owner);
   }

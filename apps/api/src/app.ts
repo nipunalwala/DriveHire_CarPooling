@@ -1,3 +1,4 @@
+import { createCarpoolsRouter } from './modules/carpools/routes.js';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import express, { type ErrorRequestHandler } from 'express';
@@ -140,6 +141,13 @@ export function createApp(options: {
     app.use(
       '/api/v1',
       createAdminOperationsRouter({
+        prisma: options.accounts.prisma,
+        requireAccount: bookingGuard.requireAccount,
+      }),
+    );
+    app.use(
+      '/api/v1',
+      createCarpoolsRouter({
         prisma: options.accounts.prisma,
         requireAccount: bookingGuard.requireAccount,
       }),

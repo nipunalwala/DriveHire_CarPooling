@@ -28,12 +28,17 @@ export function JourneyLayout({
         <p>{introduction}</p>
         <nav className="task-navigation" aria-label="Journey tasks">
           <Link to="/drivers">Find a driver</Link>
+          <Link to="/carpools">Find a carpool</Link>
           {user && (
             <>
               <Link to="/app/bookings">Your bookings</Link>
+              <Link to="/app/seats">Your carpool seats</Link>
               <Link to="/vehicles">Personal vehicles</Link>
               {user.roles.includes('DRIVER') && (
-                <Link to="/app/driver/bookings">Driver requests</Link>
+                <>
+                  <Link to="/app/driver/bookings">Driver requests</Link>
+                  <Link to="/app/carpools">Your hosted carpools</Link>
+                </>
               )}
               {user.roles.includes('ADMIN') && (
                 <Link to="/admin/operations">Journey administration</Link>

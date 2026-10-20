@@ -150,7 +150,7 @@ export async function dropTestSchema(migrationPool: Pool): Promise<void> {
   );
   if (history.rows[0]?.r) {
     await migrationPool.query(
-      "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys', '0004_invariants')",
+      "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys', '0004_invariants', '0005_carpool_terminal_states')",
     );
   }
 }
@@ -200,7 +200,7 @@ export async function withTestDatabase<T>(
     if (!sentinel.rows[0]?.cities || !sentinel.rows[0]?.profiles || !sentinel.rows[0]?.journeys) {
       // History without tables (dropped without history reset): clear and redeploy.
       await migrationPool.query(
-        "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys', '0004_invariants')",
+        "DELETE FROM _prisma_migrations WHERE migration_name IN ('0001_identity', '0002_qualification', '0003_journeys', '0004_invariants', '0005_carpool_terminal_states')",
       );
       await deployTestMigrations(migrationUrl);
     }

@@ -1,3 +1,4 @@
+import { terminalizeCarpool, flagCarpoolIncident } from '../carpools/terminal.js';
 import { Prisma } from '../../generated/client/client.js';
 import { HttpError, forbidden } from '../../errors.js';
 import type { CurrentAccount } from '../accounts/service.js';
@@ -27,7 +28,22 @@ export async function assertStartEligibility(
   vehicleId: string,
 ): Promise<void> {
   const rows = await tx.$queryRaw<{ eligible: boolean }[]>(Prisma.sql`
-    SELECT (du.status='ACTIVE' AND vu.status='ACTIVE'
+    SELECT ${qualificationPredicate()} AS eligible
+    FROM driver_profiles d JOIN users du ON du.id=d.user_id JOIN cities dc ON dc.id=d.city_id
+    JOIN vehicles v ON v.id=${vehicleId}::uuid JOIN users vu ON vu.id=v.owner_id JOIN cities vc ON vc.id=v.city_id
+    WHERE d.id=${driverId}::uuid`);
+  if (rows[0]?.eligible !== true) {
+    throw new HttpError(
+      409,
+      'QUALIFICATION_INVALID',
+      'Current accounts, qualification and evidence must be valid before starting',
+    );
+  }
+}
+
+/** Shared fixed SQL aliases d/v/du/vu/dc/vc; no caller text interpolation. */
+export function qualificationPredicate(): Prisma.Sql {
+  return Prisma.sql`(du.status='ACTIVE' AND vu.status='ACTIVE'
       AND EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id=du.id AND ur.role='DRIVER')
       AND d.verification_status='APPROVED' AND v.verification_status='APPROVED' AND v.archived_at IS NULL
       AND d.license_expires_on >= (clock_timestamp() AT TIME ZONE dc.timezone)::date
@@ -44,17 +60,7 @@ export async function assertStartEligibility(
         WHERE vd.verification_id=v.current_verification_id AND doc.vehicle_id=v.id AND doc.kind='INSURANCE'
           AND doc.scan_status='CLEAN' AND doc.retired_at IS NULL
           AND doc.expires_on >= (clock_timestamp() AT TIME ZONE vc.timezone)::date)
-    ) AS eligible
-    FROM driver_profiles d JOIN users du ON du.id=d.user_id JOIN cities dc ON dc.id=d.city_id
-    JOIN vehicles v ON v.id=${vehicleId}::uuid JOIN users vu ON vu.id=v.owner_id JOIN cities vc ON vc.id=v.city_id
-    WHERE d.id=${driverId}::uuid`);
-  if (rows[0]?.eligible !== true) {
-    throw new HttpError(
-      409,
-      'QUALIFICATION_INVALID',
-      'Current accounts, qualification and evidence must be valid before starting',
-    );
-  }
+    )`;
 }
 
 async function suspensionGraph(tx: Tx, targetId: string, actorId: string) {
@@ -73,11 +79,31 @@ async function suspensionGraph(tx: Tx, targetId: string, actorId: string) {
     },
     select: { id: true, driverId: true, vehicleId: true, passengerId: true },
   });
+  const carpools = await tx.carpool.findMany({
+    where: {
+      status: { in: ['DRAFT', 'PUBLISHED'] },
+      OR: [
+        { hostId: targetId },
+        { driverId: { in: drivers.map((d) => d.id) } },
+        { vehicleId: { in: vehicles.map((v) => v.id) } },
+        { seatRequests: { some: { passengerId: targetId, status: 'ACCEPTED' } } },
+      ],
+    },
+    include: { seatRequests: { where: { status: 'ACCEPTED' }, select: { passengerId: true } } },
+  });
   const driverIds = [
-    ...new Set([...drivers.map((row) => row.id), ...bookings.map((row) => row.driverId)]),
+    ...new Set([
+      ...drivers.map((row) => row.id),
+      ...bookings.map((row) => row.driverId),
+      ...carpools.map((row) => row.driverId),
+    ]),
   ];
   const vehicleIds = [
-    ...new Set([...vehicles.map((row) => row.id), ...bookings.map((row) => row.vehicleId)]),
+    ...new Set([
+      ...vehicles.map((row) => row.id),
+      ...bookings.map((row) => row.vehicleId),
+      ...carpools.map((row) => row.vehicleId),
+    ]),
   ];
   const [relatedDrivers, relatedVehicles] = await Promise.all([
     tx.driverProfile.findMany({ where: { id: { in: driverIds } }, select: { userId: true } }),
@@ -88,11 +114,21 @@ async function suspensionGraph(tx: Tx, targetId: string, actorId: string) {
       targetId,
       actorId,
       ...bookings.map((row) => row.passengerId),
+      ...carpools.flatMap((row) => [
+        row.hostId,
+        ...row.seatRequests.map((seat) => seat.passengerId),
+      ]),
       ...relatedDrivers.map((row) => row.userId),
       ...relatedVehicles.map((row) => row.ownerId),
     ]),
   ];
-  return { userIds, driverIds, vehicleIds, bookingIds: bookings.map((row) => row.id) };
+  return {
+    userIds,
+    driverIds,
+    vehicleIds,
+    bookingIds: bookings.map((row) => row.id),
+    carpoolIds: carpools.map((row) => row.id),
+  };
 }
 
 /** Retry discovery if a commitment committed before suspension acquired its account gate. */
@@ -115,6 +151,10 @@ export async function withSuspensionResources<T>(
     if (current.bookingIds.length)
       await tx.$queryRaw(
         Prisma.sql`SELECT id FROM bookings WHERE id IN (${Prisma.join(current.bookingIds)}) ORDER BY id FOR UPDATE`,
+      );
+    if (current.carpoolIds.length)
+      await tx.$queryRaw(
+        Prisma.sql`SELECT id FROM carpools WHERE id IN (${Prisma.join(current.carpoolIds)}) ORDER BY id FOR UPDATE`,
       );
     return run();
   });
@@ -182,5 +222,43 @@ export async function resolveSuspendedBookings(
         requestId,
       },
     });
+  }
+  const rides = await tx.carpool.findMany({
+    where: { id: { in: graph.carpoolIds } },
+    include: { trips: true, seatRequests: { where: { status: 'ACCEPTED' } } },
+    orderBy: { id: 'asc' },
+  });
+  for (const ride of rides) {
+    const active = ['STARTED', 'IN_TRANSIT'].includes(ride.trips[0]?.status ?? '');
+    if (active) {
+      await flagCarpoolIncident(tx, ride, actorId, reason, requestId);
+      continue;
+    }
+    if (ride.hostId === targetId) {
+      await terminalizeCarpool(tx, ride, 'CANCELLED', actorId, reason, requestId);
+      continue;
+    }
+    const seats = ride.seatRequests.filter((seat) => seat.passengerId === targetId);
+    for (const seat of seats) {
+      await tx.seatRequest.update({
+        where: { id: seat.id },
+        data: { status: 'CANCELLED', reason, version: { increment: 1 } },
+      });
+      await tx.carpool.update({
+        where: { id: ride.id },
+        data: { confirmedSeats: { decrement: seat.seats }, version: { increment: 1 } },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          actorType: 'USER',
+          action: 'SEAT_CANCELLED',
+          subjectType: 'SEAT_REQUEST',
+          subjectId: seat.id,
+          reason,
+          requestId,
+        },
+      });
+    }
   }
 }
