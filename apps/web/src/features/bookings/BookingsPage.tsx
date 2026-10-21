@@ -1,21 +1,63 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { BookingSchema, type BookingDto } from '@drivehire/contracts';
 import { api, ApiError } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthProvider.js';
-import { Button, EmptyState, ErrorState, Field, StatusBadge } from '../../components/ui/index.js';
+import { Button, EmptyState, ErrorState, Field } from '../../components/ui/index.js';
 import { Pages, SelectField } from '../providers/ProviderLayout.js';
-import { JourneyLayout, journeyTime, money, paymentNotice } from './JourneyLayout.js';
+import {
+  JourneyLayout,
+  JourneyStatus,
+  JourneyTime,
+  JourneyUnavailable,
+  isNotFound,
+  money,
+  paymentNotice,
+  statusLabel,
+} from './JourneyLayout.js';
+
+const bookingStatuses = [
+  'PENDING',
+  'CONFIRMED',
+  'REJECTED',
+  'CANCELLED',
+  'EXPIRED',
+  'COMPLETED',
+  'FAILED',
+];
+
+function bookingStatusHelp(status: string) {
+  switch (status) {
+    case 'PENDING':
+      return 'Waiting for the driver’s decision. This request is not confirmed yet.';
+    case 'CONFIRMED':
+      return 'The driver accepted this request. The journey is confirmed.';
+    case 'REJECTED':
+      return 'The driver declined this request. Choose a driver for a new request.';
+    case 'CANCELLED':
+      return 'This booking was cancelled.';
+    case 'EXPIRED':
+      return 'The decision window closed before the driver responded.';
+    case 'COMPLETED':
+      return 'The journey is complete.';
+    case 'FAILED':
+      return 'The journey was closed after a recorded failure.';
+    default:
+      return statusLabel(status);
+  }
+}
 
 export function BookingsPage({ driver = false }: { driver?: boolean }) {
   const { user } = useAuth();
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState('');
+  const [params, setParams] = useSearchParams();
   const [rows, setRows] = useState<BookingDto[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const status = driver ? '' : (params.get('status') ?? '');
+  const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
+  const search = params.toString();
   function beginLoad() {
     setLoading(true);
     setRows([]);
@@ -48,7 +90,26 @@ export function BookingsPage({ driver = false }: { driver?: boolean }) {
     return () => {
       active = false;
     };
-  }, [driver, denied, page, status, attempt]);
+  }, [driver, denied, page, status, search, attempt]);
+  function changeStatus(value: string) {
+    const query = new URLSearchParams(params);
+    if (value) query.set('status', value);
+    else query.delete('status');
+    query.set('page', '1');
+    beginLoad();
+    setParams(query);
+    setAttempt((count) => count + 1);
+  }
+  function changePage(next: number) {
+    const query = new URLSearchParams(params);
+    query.set('page', String(next));
+    beginLoad();
+    setParams(query);
+  }
+  function reload() {
+    beginLoad();
+    setAttempt((count) => count + 1);
+  }
   return (
     <JourneyLayout
       title={driver ? 'Driver requests' : 'Your bookings'}
@@ -57,6 +118,17 @@ export function BookingsPage({ driver = false }: { driver?: boolean }) {
           ? 'Review requests for your driving services. Accepting confirms a request; trip progress is recorded separately.'
           : 'Follow your driver requests and confirmed journeys. Reload to see the latest decisions.'
       }
+      actions={
+        driver ? (
+          <Link className="button button-secondary" to="/app/driver/dashboard">
+            Driver dashboard
+          </Link>
+        ) : (
+          <Link className="button button-primary" to="/drivers">
+            Find a driver
+          </Link>
+        )
+      }
     >
       {denied ? (
         <EmptyState title="Driver capability is needed">
@@ -64,43 +136,33 @@ export function BookingsPage({ driver = false }: { driver?: boolean }) {
         </EmptyState>
       ) : (
         <>
-          {!driver && (
-            <SelectField
-              id="booking-status"
-              label="Booking status"
-              value={status}
-              onChange={(event) => {
-                beginLoad();
-                setStatus(event.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="">All statuses</option>
-              {[
-                'PENDING',
-                'CONFIRMED',
-                'REJECTED',
-                'CANCELLED',
-                'EXPIRED',
-                'COMPLETED',
-                'FAILED',
-              ].map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </SelectField>
-          )}
-          <Button
-            variant="secondary"
-            busy={loading}
-            onClick={() => {
-              beginLoad();
-              setAttempt((value) => value + 1);
-            }}
-          >
-            Reload bookings
-          </Button>
+          <div className="journey-toolbar">
+            {!driver && (
+              <SelectField
+                id="booking-status"
+                label="Booking status"
+                value={status}
+                onChange={(event) => changeStatus(event.target.value)}
+              >
+                <option value="">All statuses</option>
+                {bookingStatuses.map((value) => (
+                  <option key={value} value={value}>
+                    {statusLabel(value)}
+                  </option>
+                ))}
+              </SelectField>
+            )}
+            <div className="journey-toolbar-actions">
+              {!loading && !error && (
+                <p className="journey-result-count" aria-live="polite">
+                  {total === 1 ? '1 booking' : `${total} bookings`}
+                </p>
+              )}
+              <Button variant="secondary" busy={loading} onClick={reload}>
+                Reload bookings
+              </Button>
+            </div>
+          </div>
           {error && <ErrorState message={error} />}
           {loading ? (
             <p role="status">Loading bookings…</p>
@@ -108,17 +170,36 @@ export function BookingsPage({ driver = false }: { driver?: boolean }) {
             !error && (
               <>
                 {rows.length ? (
-                  <ul className="record-list">
+                  <ul className="record-list journey-list">
                     {rows.map((row) => (
-                      <li key={row.id}>
-                        <StatusBadge>{row.status}</StatusBadge>
-                        <h2>{journeyTime(row.startsAt)}</h2>
-                        <p>Until {journeyTime(row.endsAt)}</p>
-                        <p>{money(row.totalMinor)} · Estimate</p>
-                        <p className="small-text">Request reference: {row.id}</p>
-                        <Link className="button button-secondary" to={`/app/bookings/${row.id}`}>
-                          View booking
-                        </Link>
+                      <li key={row.id} className="journey-card">
+                        <div className="journey-card-heading">
+                          <div>
+                            <h2>
+                              <JourneyTime value={row.startsAt} />
+                            </h2>
+                            <p className="journey-meta">
+                              Until <JourneyTime value={row.endsAt} />
+                            </p>
+                          </div>
+                          <JourneyStatus status={row.status} />
+                        </div>
+                        <p>{bookingStatusHelp(row.status)}</p>
+                        <dl className="record-facts">
+                          <div>
+                            <dt>Estimated total</dt>
+                            <dd>{money(row.totalMinor)}</dd>
+                          </div>
+                          <div>
+                            <dt>Request reference</dt>
+                            <dd>{row.id}</dd>
+                          </div>
+                        </dl>
+                        <div className="journey-card-actions">
+                          <Link className="button button-secondary" to={`/app/bookings/${row.id}`}>
+                            View booking
+                          </Link>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -134,15 +215,7 @@ export function BookingsPage({ driver = false }: { driver?: boolean }) {
                     )}
                   </EmptyState>
                 )}
-                <Pages
-                  page={page}
-                  hasMore={page * 20 < total}
-                  busy={loading}
-                  onPage={(value) => {
-                    beginLoad();
-                    setPage(value);
-                  }}
-                />
+                <Pages page={page} hasMore={page * 20 < total} busy={loading} onPage={changePage} />
               </>
             )
           )}
@@ -164,6 +237,7 @@ function BookingDetails({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [stale, setStale] = useState(false);
+  const [missing, setMissing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -176,12 +250,16 @@ function BookingDetails({ id }: { id: string }) {
         const row = BookingSchema.parse(data);
         if (active) {
           setBooking(row);
+          setMissing(false);
           setStale(false);
         }
       })
       .catch((cause: unknown) => {
-        if (active)
-          setError(cause instanceof Error ? cause.message : 'This booking could not be loaded.');
+        if (active) {
+          if (isNotFound(cause)) setMissing(true);
+          else
+            setError(cause instanceof Error ? cause.message : 'This booking could not be loaded.');
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -262,123 +340,170 @@ function BookingDetails({ id }: { id: string }) {
     <JourneyLayout
       title="Booking details"
       introduction="Check the saved request, driver decision and journey status. Reload before acting on information that may have changed."
+      actions={
+        <Button
+          variant="secondary"
+          busy={loading}
+          disabled={busy}
+          onClick={() => {
+            setMissing(false);
+            setNotice('');
+            setLoading(true);
+            setError('');
+            setAttempt((value) => value + 1);
+          }}
+        >
+          Reload booking
+        </Button>
+      }
     >
-      <Button
-        variant="secondary"
-        busy={loading}
-        disabled={busy}
-        onClick={() => {
-          setNotice('');
-          setLoading(true);
-          setError('');
-          setAttempt((value) => value + 1);
-        }}
-      >
-        Reload booking
-      </Button>
-      {error && <ErrorState message={error} />}
-      {notice && (
-        <p className="success-state" role="status">
-          {notice}
-        </p>
-      )}
-      {loading && !booking ? (
-        <p role="status">Loading booking…</p>
+      {missing ? (
+        <JourneyUnavailable
+          title="Booking unavailable"
+          to="/app/bookings"
+          action="Return to your bookings"
+        />
       ) : (
-        booking && (
-          <>
-            <section aria-label="Saved booking">
-              <StatusBadge>{booking.status}</StatusBadge>
-              {booking.status === 'PENDING' && (
-                <p>
-                  Waiting for the driver’s decision. This request is not confirmed. Decision
-                  deadline: {journeyTime(booking.expiresAt)}.
-                </p>
-              )}
-              <p className="journey-price">
-                {money(booking.totalMinor)} <span>estimated total</span>
-              </p>
-              <p>{paymentNotice}</p>
-              <dl className="journey-facts">
-                <dt>Starts</dt>
-                <dd>{journeyTime(booking.startsAt)}</dd>
-                <dt>Ends</dt>
-                <dd>{journeyTime(booking.endsAt)}</dd>
-                <dt>Driver decision</dt>
-                <dd>{booking.decisions[0]?.status}</dd>
-                <dt>Request reference</dt>
-                <dd>{booking.id}</dd>
-              </dl>
-              <Link className="button button-secondary" to={`/app/trips/${booking.tripId}`}>
-                View trip
-              </Link>
-            </section>
-            {canDecide && (
-              <form key={booking.id} onSubmit={decide} noValidate>
-                <fieldset disabled={busy || loading || stale}>
-                  <legend>Your decision</legend>
-                  <Field
-                    id="decision-reason"
-                    name="reason"
-                    label="Reason"
-                    maxLength={1000}
-                    hint="Required to reject. Use at least 10 characters."
-                  />
-                  <div className="action-row">
-                    <Button type="submit" name="decision" value="ACCEPT" busy={busy}>
-                      Accept request
-                    </Button>
-                    <Button
-                      type="submit"
-                      name="decision"
-                      value="REJECT"
-                      variant="secondary"
-                      disabled={busy}
-                    >
-                      Reject request
-                    </Button>
+        <>
+          {error && <ErrorState message={error} />}
+          {notice && (
+            <p className="success-state" role="status">
+              {notice}
+            </p>
+          )}
+          {loading && !booking ? (
+            <p role="status">Loading booking…</p>
+          ) : (
+            booking && (
+              <>
+                <section className="journey-detail-card" aria-label="Saved booking">
+                  <div className="journey-card-heading">
+                    <div>
+                      <h2>Driver hire</h2>
+                      <p className="journey-meta">
+                        <JourneyTime value={booking.startsAt} /> to{' '}
+                        <JourneyTime value={booking.endsAt} />
+                      </p>
+                    </div>
+                    <JourneyStatus status={booking.status} />
                   </div>
-                </fieldset>
-              </form>
-            )}
-            {canCancel && (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void mutate(
-                    'CANCEL',
-                    String(new FormData(event.currentTarget).get('reason') ?? ''),
-                  );
-                }}
-              >
-                <fieldset disabled={busy || loading || stale}>
-                  <legend>Cancel booking</legend>
-                  <p>
-                    Cancellation depends on the journey’s start time and current trip state. To
-                    change the driver or vehicle, cancel and request a new estimate.
+                  <p>{bookingStatusHelp(booking.status)}</p>
+                  {booking.status === 'PENDING' && (
+                    <p>
+                      The driver has until <JourneyTime value={booking.expiresAt} /> to respond.
+                      This request is not confirmed.
+                    </p>
+                  )}
+                  <p className="journey-price">
+                    {money(booking.totalMinor)} <span>estimated total</span>
                   </p>
-                  <Field
-                    id="cancellation-reason"
-                    name="reason"
-                    label="Cancellation reason"
-                    required
-                    minLength={10}
-                    maxLength={1000}
-                  />
-                  <Button type="submit" variant="secondary" busy={busy}>
-                    Cancel booking
-                  </Button>
-                </fieldset>
-              </form>
-            )}
-            {['REJECTED', 'CANCELLED', 'EXPIRED', 'FAILED'].includes(booking.status) && (
-              <p>
-                <Link to="/drivers">Find a driver for a new request</Link>. Choose a new estimate;
-                completed requests cannot be reassigned.
-              </p>
-            )}
-          </>
-        )
+                  <p>{paymentNotice}</p>
+                  <dl className="record-facts">
+                    <div>
+                      <dt>Starts</dt>
+                      <dd>
+                        <JourneyTime value={booking.startsAt} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Ends</dt>
+                      <dd>
+                        <JourneyTime value={booking.endsAt} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Driver decision</dt>
+                      <dd>{statusLabel(booking.decisions[0]?.status ?? 'PENDING')}</dd>
+                    </div>
+                    <div>
+                      <dt>Request reference</dt>
+                      <dd>{booking.id}</dd>
+                    </div>
+                  </dl>
+                  <div className="journey-card-actions">
+                    <Link
+                      className={canDecide ? 'button button-secondary' : 'button button-primary'}
+                      to={`/app/trips/${booking.tripId}`}
+                    >
+                      View trip
+                    </Link>
+                  </div>
+                </section>
+                {canDecide && (
+                  <form
+                    className="journey-action-panel"
+                    key={booking.id}
+                    onSubmit={decide}
+                    noValidate
+                  >
+                    <fieldset disabled={busy || loading || stale}>
+                      <legend>Your decision</legend>
+                      <p>Accepting confirms the request. Rejecting closes it with a reason.</p>
+                      <Field
+                        id="decision-reason"
+                        name="reason"
+                        label="Reason"
+                        maxLength={1000}
+                        hint="Required to reject. Use at least 10 characters."
+                      />
+                      <div className="action-row">
+                        <Button type="submit" name="decision" value="ACCEPT" busy={busy}>
+                          Accept request
+                        </Button>
+                        <Button
+                          type="submit"
+                          name="decision"
+                          value="REJECT"
+                          variant="secondary"
+                          disabled={busy}
+                        >
+                          Reject request
+                        </Button>
+                      </div>
+                    </fieldset>
+                  </form>
+                )}
+                {canCancel && (
+                  <form
+                    className="journey-action-panel"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void mutate(
+                        'CANCEL',
+                        String(new FormData(event.currentTarget).get('reason') ?? ''),
+                      );
+                    }}
+                  >
+                    <fieldset disabled={busy || loading || stale}>
+                      <legend>Cancel booking</legend>
+                      <p>
+                        Cancellation depends on the journey’s start time and current trip state. To
+                        change the driver or vehicle, cancel and request a new estimate.
+                      </p>
+                      <Field
+                        id="cancellation-reason"
+                        name="reason"
+                        label="Cancellation reason"
+                        required
+                        minLength={10}
+                        maxLength={1000}
+                      />
+                      <Button type="submit" variant="secondary" busy={busy}>
+                        Cancel booking
+                      </Button>
+                    </fieldset>
+                  </form>
+                )}
+                {['REJECTED', 'CANCELLED', 'EXPIRED', 'FAILED'].includes(booking.status) && (
+                  <p>
+                    <Link to="/drivers">Find a driver for a new request</Link>. Choose a new
+                    estimate; completed requests cannot be reassigned.
+                  </p>
+                )}
+              </>
+            )
+          )}
+        </>
       )}
     </JourneyLayout>
   );

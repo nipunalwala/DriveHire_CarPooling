@@ -2174,6 +2174,233 @@ form {
 }
 
 /* ─── Journey page ───────────────────────────────────────────────── */
+/* ─── Journey search, list and detail hierarchy ───────────────── */
+.journey-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.journey-back-link:hover {
+  color: var(--accent);
+}
+
+.journey-filter {
+  gap: 16px;
+  padding: 20px 24px;
+}
+
+.journey-filter-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.journey-filter-heading h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.journey-filter-heading p {
+  margin: 0;
+}
+
+.journey-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  margin-block: 8px 16px;
+}
+
+.journey-toolbar:has(> .field) {
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.journey-toolbar > .field {
+  flex: 0 1 260px;
+}
+
+.journey-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.journey-toolbar-actions .button {
+  min-height: 40px;
+  padding: 8px 14px;
+}
+
+.journey-results {
+  margin-top: 28px;
+}
+
+.journey-result-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-block: 24px 12px;
+}
+
+.journey-result-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.journey-result-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.journey-page .journey-list {
+  margin-block: 16px;
+  gap: 16px;
+}
+
+.journey-card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+}
+
+.journey-page .record-list > li.journey-card {
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px;
+}
+
+.journey-page .record-list > li.journey-card:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
+  transform: none;
+}
+
+.journey-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.journey-card-heading > div {
+  min-width: 0;
+}
+
+.journey-page .journey-card h2,
+.journey-page .journey-card h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+
+.journey-meta {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.journey-rate {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+
+.journey-page .journey-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.journey-page .journey-card .record-facts {
+  margin-block: 4px;
+}
+
+.journey-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.journey-detail-card,
+.journey-context-card {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.journey-context-card {
+  padding: 20px 24px;
+}
+
+.journey-detail-card .journey-card-actions {
+  margin-top: 0;
+}
+
+.journey-page .journey-action-panel {
+  gap: 16px;
+}
+
+.journey-page .journey-action-panel h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.journey-form-section {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+
+.journey-form-section + .journey-form-section {
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.journey-inline-form {
+  gap: 16px;
+  margin-top: 4px;
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 .journey-page .journey-price {
   font-size: 1.5rem;
   font-weight: 800;
@@ -2567,6 +2794,20 @@ form {
 }
 
 @media (max-width: 520px) {
+  .journey-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .journey-filter,
+  .journey-detail-card,
+  .journey-context-card {
+    padding: 18px;
+  }
+
+  .journey-toolbar > .field {
+    flex-basis: 100%;
+  }
+
   .schedule-form .form-columns {
     grid-template-columns: 1fr;
   }

@@ -2,9 +2,17 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CarpoolSchema, CitySchema, type CarpoolDto } from '@drivehire/contracts';
 import { api } from '../../api/client.js';
-import { Button, EmptyState, ErrorState, Field, StatusBadge } from '../../components/ui/index.js';
+import { useAuth } from '../../auth/AuthProvider.js';
+import { Button, EmptyState, ErrorState, Field } from '../../components/ui/index.js';
 import { CitySelect, Pages } from '../providers/ProviderLayout.js';
-import { JourneyLayout, journeyTime, money, paymentNotice } from '../bookings/JourneyLayout.js';
+import {
+  JourneyLayout,
+  JourneyStatus,
+  JourneyTime,
+  money,
+  paymentNotice,
+} from '../bookings/JourneyLayout.js';
+
 export function useCityNames() {
   const [names, setNames] = useState<Map<string, string>>(new Map());
   useEffect(() => {
@@ -27,44 +35,82 @@ export function useCityNames() {
   }, []);
   return names;
 }
-export function RideSummary({ ride, names }: { ride: CarpoolDto; names: Map<string, string> }) {
+
+export function RideSummary({
+  ride,
+  names,
+  hosted = false,
+}: {
+  ride: CarpoolDto;
+  names: Map<string, string>;
+  hosted?: boolean;
+}) {
+  const origin = names.get(ride.originCityId) ?? 'Origin city';
+  const destination = names.get(ride.destinationCityId) ?? 'Destination city';
   return (
-    <>
-      <StatusBadge>{ride.status}</StatusBadge>
-      <h2>{ride.hostDisplayName}</h2>
-      <p>
-        {names.get(ride.originCityId) ?? 'Origin city'} to{' '}
-        {names.get(ride.destinationCityId) ?? 'Destination city'}
-      </p>
-      <p>
-        {journeyTime(ride.startsAt)} · {ride.vehicleSummary.make} {ride.vehicleSummary.model}
-      </p>
-      <p>
-        {ride.availableSeats === 0 ? 'Full' : `${ride.availableSeats} seats available`} ·{' '}
-        {money(ride.pricePerSeatMinor)} per seat
-      </p>
-      <Link className="button button-secondary" to={`/carpools/${ride.id}`}>
-        View ride
-      </Link>
-    </>
+    <div className="journey-card-content">
+      <div className="journey-card-heading">
+        <div>
+          <h2>
+            {origin} to {destination}
+          </h2>
+          <p className="journey-meta">
+            Hosted by {ride.hostDisplayName} · {ride.vehicleSummary.make}{' '}
+            {ride.vehicleSummary.model}
+          </p>
+        </div>
+        <JourneyStatus status={ride.status} />
+      </div>
+      <dl className="record-facts">
+        <div>
+          <dt>Departure</dt>
+          <dd>
+            <JourneyTime value={ride.startsAt} />
+          </dd>
+        </div>
+        <div>
+          <dt>Seats available</dt>
+          <dd>
+            {ride.availableSeats === 0 ? 'Full' : `${ride.availableSeats} of ${ride.seatsOffered}`}
+          </dd>
+        </div>
+        <div>
+          <dt>Price per seat</dt>
+          <dd>{money(ride.pricePerSeatMinor)}</dd>
+        </div>
+      </dl>
+      <div className="journey-card-actions">
+        {hosted && ride.status === 'DRAFT' && (
+          <Link className="button button-secondary" to={`/app/carpools/${ride.id}/edit`}>
+            Edit draft
+          </Link>
+        )}
+        <Link className="button button-secondary" to={`/carpools/${ride.id}`}>
+          View ride
+        </Link>
+      </div>
+    </div>
   );
 }
+
 export function CarpoolsPage() {
-  const [params, setParams] = useSearchParams(),
-    [rows, setRows] = useState<CarpoolDto[]>([]),
-    [total, setTotal] = useState(0),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState(''),
-    [attempt, setAttempt] = useState(0);
-  const names = useCityNames(),
-    search = params.toString(),
-    page = Number(params.get('page') ?? 1);
+  const { user } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const [rows, setRows] = useState<CarpoolDto[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  const names = useCityNames();
+  const search = params.toString();
+  const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
   useEffect(() => {
     let active = true;
     const query = new URLSearchParams(search);
+    query.set('page', String(page));
     query.set('pageSize', '20');
     void api
-      .requestPage<unknown>(`/carpools?${query}`)
+      .requestPage<unknown>(`/carpools?${query.toString()}`)
       .then((result) => {
         const rides = result.data.map((row) => CarpoolSchema.parse(row));
         if (active) {
@@ -82,16 +128,17 @@ export function CarpoolsPage() {
     return () => {
       active = false;
     };
-  }, [search, attempt]);
+  }, [search, page, attempt]);
   function load() {
     setLoading(true);
     setError('');
     setRows([]);
+    setTotal(0);
   }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget),
-      query = new URLSearchParams();
+    const form = new FormData(event.currentTarget);
+    const query = new URLSearchParams();
     for (const name of ['originCityId', 'destinationCityId', 'date', 'seats']) {
       const value = String(form.get(name) ?? '');
       if (value) query.set(name, value);
@@ -99,15 +146,36 @@ export function CarpoolsPage() {
     query.set('page', '1');
     load();
     setParams(query);
-    setAttempt((n) => n + 1);
+    setAttempt((count) => count + 1);
+  }
+  function resetFilters() {
+    load();
+    setParams(new URLSearchParams({ page: '1' }));
+    setAttempt((count) => count + 1);
+  }
+  function changePage(next: number) {
+    load();
+    const query = new URLSearchParams(params);
+    query.set('page', String(next));
+    setParams(query);
   }
   return (
     <JourneyLayout
       title="Find a carpool"
       introduction="Travel with an approved driver in their own approved vehicle. Seats join instantly; there is no host approval step."
+      actions={
+        user?.roles.includes('DRIVER') ? (
+          <Link className="button button-primary" to="/app/carpools/new">
+            Offer a ride
+          </Link>
+        ) : undefined
+      }
     >
-      <form onSubmit={submit} aria-label="Find carpools">
-        <h2>Your journey</h2>
+      <form className="journey-filter" onSubmit={submit} aria-label="Find carpools" key={search}>
+        <div className="journey-filter-heading">
+          <h2>Search filters</h2>
+          <p className="small-text">Join instantly when seats are available.</p>
+        </div>
         <div className="form-columns">
           <CitySelect
             name="originCityId"
@@ -139,14 +207,15 @@ export function CarpoolsPage() {
             defaultValue={params.get('seats') ?? '1'}
           />
         </div>
-        <Button type="submit" busy={loading}>
-          Find carpools
-        </Button>
+        <div className="action-row">
+          <Button type="submit" busy={loading}>
+            Find carpools
+          </Button>
+          <Button type="button" variant="secondary" onClick={resetFilters} disabled={loading}>
+            Reset filters
+          </Button>
+        </div>
       </form>
-      <p>
-        <Link to="/app/carpools/new">Offer a ride</Link>
-      </p>
-      <p>{paymentNotice}</p>
       {error && (
         <>
           <ErrorState message={error} />
@@ -154,56 +223,58 @@ export function CarpoolsPage() {
             variant="secondary"
             onClick={() => {
               load();
-              setAttempt((n) => n + 1);
+              setAttempt((count) => count + 1);
             }}
           >
             Reload carpools
           </Button>
         </>
       )}
-      {loading ? (
-        <p role="status">Loading carpools…</p>
-      ) : (
-        !error && (
-          <>
-            {rows.length ? (
-              <ul className="record-list">
-                {rows.map((ride) => (
-                  <li key={ride.id}>
-                    <RideSummary ride={ride} names={names} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <EmptyState title="No carpools match">
-                Try another day, route or seat count. Full and closed rides are not available to
-                join.
-              </EmptyState>
-            )}
-            <Pages
-              page={page}
-              hasMore={page * 20 < total}
-              busy={loading}
-              onPage={(next) => {
-                load();
-                const query = new URLSearchParams(params);
-                query.set('page', String(next));
-                setParams(query);
-              }}
-            />
-          </>
-        )
-      )}
+      <section className="journey-results" aria-label="Carpool results" aria-busy={loading}>
+        <div className="journey-result-heading">
+          <h2>Available carpools</h2>
+          {!loading && !error && (
+            <p className="journey-result-count" aria-live="polite">
+              {total === 1 ? '1 carpool' : `${total} carpools`}
+            </p>
+          )}
+        </div>
+        {loading ? (
+          <p role="status">Loading carpools…</p>
+        ) : (
+          !error && (
+            <>
+              {rows.length ? (
+                <ul className="record-list journey-list journey-card-grid">
+                  {rows.map((ride) => (
+                    <li key={ride.id} className="journey-card">
+                      <RideSummary ride={ride} names={names} />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState title="No carpools match">
+                  Try another day, route or seat count. Full and closed rides are not available to
+                  join.
+                </EmptyState>
+              )}
+              <Pages page={page} hasMore={page * 20 < total} busy={loading} onPage={changePage} />
+            </>
+          )
+        )}
+      </section>
+      <p className="small-text">{paymentNotice}</p>
     </JourneyLayout>
   );
 }
+
 export function HostedCarpoolsPage() {
-  const [rows, setRows] = useState<CarpoolDto[]>([]),
-    [page, setPage] = useState(1),
-    [total, setTotal] = useState(0),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState(''),
-    [attempt, setAttempt] = useState(0);
+  const [rows, setRows] = useState<CarpoolDto[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   const names = useCityNames();
   useEffect(() => {
     let active = true;
@@ -226,44 +297,59 @@ export function HostedCarpoolsPage() {
       active = false;
     };
   }, [page, attempt]);
+  function load() {
+    setLoading(true);
+    setError('');
+    setRows([]);
+    setTotal(0);
+  }
   return (
     <JourneyLayout
       title="Your hosted carpools"
       introduction="Keep drafts private, publish when ready, and follow the saved state of every ride."
-    >
-      <p>
+      actions={
         <Link className="button button-primary" to="/app/carpools/new">
           Offer a ride
         </Link>
-      </p>
+      }
+    >
+      <div className="journey-toolbar">
+        <div className="journey-toolbar-actions">
+          {!loading && !error && (
+            <p className="journey-result-count" aria-live="polite">
+              {total === 1 ? '1 hosted ride' : `${total} hosted rides`}
+            </p>
+          )}
+          <Button
+            variant="secondary"
+            busy={loading}
+            onClick={() => {
+              load();
+              setAttempt((count) => count + 1);
+            }}
+          >
+            Reload hosted rides
+          </Button>
+        </div>
+      </div>
       {error && <ErrorState message={error} />}
-      <Button
-        variant="secondary"
-        busy={loading}
-        onClick={() => {
-          setLoading(true);
-          setError('');
-          setAttempt((n) => n + 1);
-        }}
-      >
-        Reload hosted rides
-      </Button>
       {loading ? (
         <p role="status">Loading hosted rides…</p>
       ) : (
         !error && (
           <>
             {rows.length ? (
-              <ul className="record-list">
+              <ul className="record-list journey-list journey-card-grid">
                 {rows.map((ride) => (
-                  <li key={ride.id}>
-                    <RideSummary ride={ride} names={names} />
+                  <li key={ride.id} className="journey-card">
+                    <RideSummary ride={ride} names={names} hosted />
                   </li>
                 ))}
               </ul>
             ) : (
               <EmptyState title="No hosted rides yet">
-                Create a private draft using your approved personal vehicle.
+                <Link to="/app/carpools/new">Create a private draft</Link> using your approved
+                personal vehicle.
               </EmptyState>
             )}
             <Pages
@@ -271,14 +357,14 @@ export function HostedCarpoolsPage() {
               hasMore={page * 20 < total}
               busy={loading}
               onPage={(next) => {
-                setLoading(true);
-                setError('');
+                load();
                 setPage(next);
               }}
             />
           </>
         )
       )}
+      <p className="small-text">{paymentNotice}</p>
     </JourneyLayout>
   );
 }

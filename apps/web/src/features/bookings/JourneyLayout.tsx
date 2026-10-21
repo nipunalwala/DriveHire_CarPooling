@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../auth/AuthProvider.js';
+import { ArrowLeft } from 'lucide-react';
+import { PageHeading } from '../../components/PageHeading.js';
+import { EmptyState, StatusBadge } from '../../components/ui/index.js';
+import { ApiError } from '../../api/client.js';
 
 export const paymentNotice = 'Payment not collected by DriveHire.';
 export const money = (minor: number) =>
@@ -11,47 +14,99 @@ export const journeyTime = (value: string) =>
     timeStyle: 'short',
   }).format(new Date(value));
 
+const statusLabels: Record<string, string> = {
+  ACCEPTED: 'Accepted',
+  ACTIVE: 'Active',
+  APPROVED: 'Approved',
+  ASSIGNED: 'Driver assigned',
+  CANCELLED: 'Cancelled',
+  CLOSED: 'Closed',
+  COMPLETED: 'Completed',
+  CONFIRMED: 'Confirmed',
+  DRAFT: 'Draft',
+  EXPIRED: 'Expired',
+  FAILED: 'Failed',
+  IN_PROGRESS: 'In progress',
+  IN_TRANSIT: 'In transit',
+  OPEN: 'Open',
+  PENDING: 'Pending',
+  PUBLISHED: 'Published',
+  REJECTED: 'Rejected',
+  SCHEDULED: 'Scheduled',
+  STARTED: 'Started',
+};
+
+export function statusLabel(value: string) {
+  return (
+    statusLabels[value] ??
+    value
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  );
+}
+
+export function JourneyStatus({ status }: { status: string }) {
+  return <StatusBadge>{statusLabel(status)}</StatusBadge>;
+}
+
+export function JourneyTime({ value }: { value: string }) {
+  return <time dateTime={value}>{journeyTime(value)}</time>;
+}
+
+export function dateTimeInput(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function isNotFound(cause: unknown) {
+  return cause instanceof ApiError && cause.status === 404;
+}
+
+export function BackLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link className="journey-back-link" to={to}>
+      <ArrowLeft size={16} aria-hidden="true" />
+      {children}
+    </Link>
+  );
+}
+
+export function JourneyUnavailable({
+  title,
+  to,
+  action,
+}: {
+  title: string;
+  to: string;
+  action: string;
+}) {
+  return (
+    <EmptyState title={title}>
+      This record may have been removed, or your account may not have access to it.{' '}
+      <Link to={to}>{action}</Link>.
+    </EmptyState>
+  );
+}
+
 export function JourneyLayout({
   title,
   introduction,
+  actions,
   children,
 }: {
   title: string;
   introduction: string;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
-  const { user } = useAuth();
   return (
-    <section className="profile-layout provider-page journey-page">
-      <div>
-        <h1>{title}</h1>
-        <p>{introduction}</p>
-        <nav className="task-navigation" aria-label="Journey tasks">
-          <Link to="/drivers">Find a driver</Link>
-          <Link to="/carpools">Find a carpool</Link>
-          {user && (
-            <>
-              <Link to="/app/bookings">Your bookings</Link>
-              <Link to="/app/seats">Your carpool seats</Link>
-              <Link to="/vehicles">Personal vehicles</Link>
-              {user.roles.includes('DRIVER') && (
-                <>
-                  <Link to="/app/driver/bookings">Driver requests</Link>
-                  <Link to="/app/carpools">Your hosted carpools</Link>
-                </>
-              )}
-              {user.roles.includes('ADMIN') && (
-                <>
-                  <Link to="/admin/operations">Journey administration</Link>
-                  <Link to="/admin/users">User accounts</Link>
-                  <Link to="/admin/verifications">Qualification reviews</Link>
-                  <Link to="/admin/audit">Administrative audit</Link>
-                </>
-              )}
-            </>
-          )}
-        </nav>
-      </div>
+    <section className="workspace-page provider-page journey-page">
+      <PageHeading title={title} introduction={introduction} actions={actions} />
       <div className="profile-content">{children}</div>
     </section>
   );

@@ -7,9 +7,18 @@ import {
   type SeatRequestDto,
 } from '@drivehire/contracts';
 import { api, ApiError } from '../../api/client.js';
-import { Button, EmptyState, ErrorState, Field, StatusBadge } from '../../components/ui/index.js';
+import { Button, EmptyState, ErrorState, Field } from '../../components/ui/index.js';
 import { Pages } from '../providers/ProviderLayout.js';
-import { JourneyLayout, journeyTime, money, paymentNotice } from '../bookings/JourneyLayout.js';
+import {
+  JourneyLayout,
+  JourneyStatus,
+  JourneyTime,
+  money,
+  paymentNotice,
+  statusLabel,
+} from '../bookings/JourneyLayout.js';
+import { useCityNames } from '../carpools/CarpoolsPage.js';
+
 export function SeatsPage() {
   const [rows, setRows] = useState<SeatRequestDto[]>([]),
     [rides, setRides] = useState<Map<string, CarpoolDto>>(new Map()),
@@ -22,6 +31,7 @@ export function SeatsPage() {
     [notice, setNotice] = useState(''),
     [attempt, setAttempt] = useState(0),
     [now, setNow] = useState(0);
+  const names = useCityNames();
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -57,6 +67,8 @@ export function SeatsPage() {
   function reload() {
     setLoading(true);
     setError('');
+    setRows([]);
+    setRides(new Map());
     setAttempt((n) => n + 1);
   }
   async function cancel(event: FormEvent<HTMLFormElement>, seat: SeatRequestDto) {
@@ -94,89 +106,136 @@ export function SeatsPage() {
     <JourneyLayout
       title="Your carpool seats"
       introduction="See current participation and past journeys. Accepted seats remain in history when a ride completes or fails."
+      actions={
+        <Button variant="secondary" busy={loading} disabled={busy} onClick={reload}>
+          Reload seats
+        </Button>
+      }
     >
-      <Button variant="secondary" busy={loading} disabled={busy} onClick={reload}>
-        Reload seats
-      </Button>
-      {error && <ErrorState message={error} />}{' '}
+      {error && <ErrorState message={error} />}
       {notice && (
         <p className="success-state" role="status">
           {notice}
         </p>
       )}
-      <p>{paymentNotice}</p>
+      <div className="journey-toolbar">
+        <div className="journey-toolbar-actions">
+          {!loading && !error && (
+            <p className="journey-result-count" aria-live="polite">
+              {total === 1 ? '1 seat booking' : `${total} seat bookings`}
+            </p>
+          )}
+        </div>
+      </div>
       {loading ? (
         <p role="status">Loading your seats…</p>
       ) : (
-        <>
-          {rows.length ? (
-            <ul className="record-list">
-              {rows.map((seat) => {
-                const ride = rides.get(seat.carpoolId),
-                  canCancel =
-                    seat.status === 'ACCEPTED' &&
-                    ride?.status === 'PUBLISHED' &&
-                    now <= new Date(ride.startsAt).getTime() - 15 * 60000;
-                return (
-                  <li key={seat.id}>
-                    <StatusBadge>{seat.status}</StatusBadge>
-                    <h2>{ride?.hostDisplayName ?? 'Carpool journey'}</h2>
-                    {ride && (
-                      <p>
-                        {journeyTime(ride.startsAt)} ·{' '}
-                        {ride.status === 'COMPLETED'
-                          ? 'Ride completed'
-                          : ride.status === 'FAILED'
-                            ? 'Ride failed'
-                            : `Ride ${ride.status.toLowerCase()}`}
-                      </p>
-                    )}
-                    <p>
-                      {seat.seats} {seat.seats === 1 ? 'seat' : 'seats'} ·{' '}
-                      {money(seat.seats * seat.pricePerSeatMinor)} estimate
-                    </p>
-                    <p>
-                      <Link to={`/carpools/${seat.carpoolId}`}>View ride</Link>
-                    </p>
-                    {canCancel && (
-                      <form
-                        onSubmit={(event) => void cancel(event, seat)}
-                        aria-label="Cancel carpool seats"
-                      >
-                        <Field
-                          id={`seat-reason-${seat.id}`}
-                          name="reason"
-                          label="Cancellation reason"
-                          minLength={10}
-                          maxLength={1000}
-                          required
-                        />
-                        <Button variant="secondary" busy={busy} disabled={stale} type="submit">
-                          Cancel seats
-                        </Button>
-                      </form>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <EmptyState title="No carpool seats yet">
-              <Link to="/carpools">Find a carpool</Link> and join an available ride instantly.
-            </EmptyState>
-          )}
-          <Pages
-            page={page}
-            hasMore={page * 20 < total}
-            busy={loading || busy}
-            onPage={(next) => {
-              setLoading(true);
-              setError('');
-              setPage(next);
-            }}
-          />
-        </>
+        !error && (
+          <>
+            {rows.length ? (
+              <ul className="record-list journey-list">
+                {rows.map((seat) => {
+                  const ride = rides.get(seat.carpoolId),
+                    canCancel =
+                      seat.status === 'ACCEPTED' &&
+                      ride?.status === 'PUBLISHED' &&
+                      now <= new Date(ride.startsAt).getTime() - 15 * 60000;
+                  const origin = ride ? (names.get(ride.originCityId) ?? 'Origin city') : '';
+                  const destination = ride
+                    ? (names.get(ride.destinationCityId) ?? 'Destination city')
+                    : '';
+                  return (
+                    <li key={seat.id} className="journey-card">
+                      <div className="journey-card-heading">
+                        <div>
+                          <h2>
+                            {ride ? (
+                              <>
+                                {origin} to {destination}
+                              </>
+                            ) : (
+                              'Carpool journey'
+                            )}
+                          </h2>
+                          {ride && (
+                            <p className="journey-meta">
+                              <JourneyTime value={ride.startsAt} /> · Ride{' '}
+                              {statusLabel(ride.status).toLowerCase()}
+                            </p>
+                          )}
+                        </div>
+                        <JourneyStatus status={seat.status} />
+                      </div>
+                      <dl className="record-facts">
+                        <div>
+                          <dt>Seats</dt>
+                          <dd>
+                            {seat.seats} {seat.seats === 1 ? 'seat' : 'seats'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Estimated total</dt>
+                          <dd>{money(seat.seats * seat.pricePerSeatMinor)}</dd>
+                        </div>
+                        {ride && (
+                          <div>
+                            <dt>Host</dt>
+                            <dd>{ride.hostDisplayName}</dd>
+                          </div>
+                        )}
+                      </dl>
+                      <div className="journey-card-actions">
+                        <Link
+                          className="button button-secondary"
+                          to={`/carpools/${seat.carpoolId}`}
+                        >
+                          View ride
+                        </Link>
+                      </div>
+                      {canCancel && (
+                        <form
+                          className="journey-inline-form"
+                          onSubmit={(event) => void cancel(event, seat)}
+                          aria-label="Cancel carpool seats"
+                        >
+                          <Field
+                            id={`seat-reason-${seat.id}`}
+                            name="reason"
+                            label="Cancellation reason"
+                            minLength={10}
+                            maxLength={1000}
+                            required
+                          />
+                          <Button variant="secondary" busy={busy} disabled={stale} type="submit">
+                            Cancel seats
+                          </Button>
+                        </form>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <EmptyState title="No carpool seats yet">
+                <Link to="/carpools">Find a carpool</Link> and join an available ride instantly.
+              </EmptyState>
+            )}
+            <Pages
+              page={page}
+              hasMore={page * 20 < total}
+              busy={loading || busy}
+              onPage={(next) => {
+                setLoading(true);
+                setError('');
+                setRows([]);
+                setRides(new Map());
+                setPage(next);
+              }}
+            />
+          </>
+        )
       )}
+      <p className="small-text">{paymentNotice}</p>
     </JourneyLayout>
   );
 }

@@ -19,7 +19,16 @@ import {
 import { api, ApiError } from '../../api/client.js';
 import { Button, EmptyState, ErrorState, Field } from '../../components/ui/index.js';
 import { CitySelect, SelectField } from '../providers/ProviderLayout.js';
-import { JourneyLayout, journeyTime, money, paymentNotice } from './JourneyLayout.js';
+import {
+  BackLink,
+  JourneyLayout,
+  JourneyStatus,
+  JourneyTime,
+  JourneyUnavailable,
+  isNotFound,
+  money,
+  paymentNotice,
+} from './JourneyLayout.js';
 
 export function BookingNewPage() {
   const [params] = useSearchParams();
@@ -37,6 +46,7 @@ function BookingForm({ driverId }: { driverId: string }) {
   const [selectedVehicle, setSelectedVehicle] = useState(retained.vehicleId ?? '');
   const [loading, setLoading] = useState(Boolean(driverId));
   const [loadError, setLoadError] = useState('');
+  const [missingDriver, setMissingDriver] = useState(false);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -69,8 +79,13 @@ function BookingForm({ driverId }: { driverId: string }) {
     }
     void load()
       .catch((cause: unknown) => {
-        if (active)
-          setLoadError(cause instanceof Error ? cause.message : 'Could not load journey details.');
+        if (active) {
+          if (isNotFound(cause)) setMissingDriver(true);
+          else
+            setLoadError(
+              cause instanceof Error ? cause.message : 'Could not load journey details.',
+            );
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -179,11 +194,18 @@ function BookingForm({ driverId }: { driverId: string }) {
     <JourneyLayout
       title="Request a driver"
       introduction="Choose your vehicle and journey, review the estimate, then send a request. A request becomes confirmed only when the driver accepts."
+      actions={<BackLink to="/drivers">Back to driver search</BackLink>}
     >
       {!driverId ? (
         <EmptyState title="Choose a driver first">
           <Link to="/drivers">Find a driver</Link> to begin your request.
         </EmptyState>
+      ) : missingDriver ? (
+        <JourneyUnavailable
+          title="Driver unavailable"
+          to="/drivers"
+          action="Return to driver search"
+        />
       ) : (
         <>
           {loadError && (
@@ -204,9 +226,16 @@ function BookingForm({ driverId }: { driverId: string }) {
           )}
           {loading && <p role="status">Loading the driver and your approved vehicles…</p>}
           {driver && (
-            <section className="journey-summary">
-              <h2>{driver.displayName}</h2>
-              <p>{money(driver.hourlyRateMinor)} per hour · Current rate</p>
+            <section className="journey-context-card" aria-label="Selected driver">
+              <div className="journey-card-heading">
+                <div>
+                  <h2>{driver.displayName}</h2>
+                  <p className="journey-rate">
+                    {money(driver.hourlyRateMinor)} per hour · Current rate
+                  </p>
+                </div>
+                <JourneyStatus status={driver.verificationStatus} />
+              </div>
               <Link to="/drivers">Choose a different driver</Link>
             </section>
           )}
@@ -232,7 +261,14 @@ function BookingForm({ driverId }: { driverId: string }) {
             }}
           >
             <fieldset
-              disabled={busy || loading || Boolean(loadError) || !driver || vehicles.length === 0}
+              disabled={
+                busy ||
+                loading ||
+                Boolean(loadError) ||
+                missingDriver ||
+                !driver ||
+                vehicles.length === 0
+              }
             >
               <legend>Journey details</legend>
               <SelectField
@@ -303,18 +339,32 @@ function BookingForm({ driverId }: { driverId: string }) {
           {estimate && (
             <section className="estimate-panel" aria-live="polite">
               <h2>Your estimate</h2>
-              <p className="journey-price">{money(estimate.quote.totalMinor)}</p>
+              <p className="journey-price">
+                {money(estimate.quote.totalMinor)} <span>estimated total</span>
+              </p>
               <p>
                 {estimate.quote.billableHours} billable{' '}
                 {estimate.quote.billableHours === 1 ? 'hour' : 'hours'} · Driver service only
               </p>
-              <dl className="journey-facts">
-                <dt>Starts</dt>
-                <dd>{journeyTime(estimate.quote.startsAt)}</dd>
-                <dt>Ends</dt>
-                <dd>{journeyTime(estimate.quote.endsAt)}</dd>
-                <dt>Estimate valid until</dt>
-                <dd>{journeyTime(estimate.quote.expiresAt)}</dd>
+              <dl className="record-facts">
+                <div>
+                  <dt>Starts</dt>
+                  <dd>
+                    <JourneyTime value={estimate.quote.startsAt} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>Ends</dt>
+                  <dd>
+                    <JourneyTime value={estimate.quote.endsAt} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>Estimate valid until</dt>
+                  <dd>
+                    <JourneyTime value={estimate.quote.expiresAt} />
+                  </dd>
+                </div>
               </dl>
               <p>{paymentNotice}</p>
               <p>Send a request for the driver to review. This does not confirm your booking.</p>

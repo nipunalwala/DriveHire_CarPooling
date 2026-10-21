@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   DriverPrivateSchema,
   TripSchema,
@@ -9,9 +9,17 @@ import {
 } from '@drivehire/contracts';
 import { api, ApiError } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthProvider.js';
-import { Button, EmptyState, ErrorState, Field, StatusBadge } from '../../components/ui/index.js';
+import { Button, EmptyState, ErrorState, Field } from '../../components/ui/index.js';
 import { Pages } from '../providers/ProviderLayout.js';
-import { JourneyLayout, journeyTime } from '../bookings/JourneyLayout.js';
+import {
+  BackLink,
+  JourneyLayout,
+  JourneyStatus,
+  JourneyTime,
+  JourneyUnavailable,
+  isNotFound,
+  statusLabel,
+} from '../bookings/JourneyLayout.js';
 
 export function TripPage() {
   const { id = '' } = useParams();
@@ -29,6 +37,7 @@ function TripDetails({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [stale, setStale] = useState(false);
+  const [missing, setMissing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [attempt, setAttempt] = useState(0);
@@ -61,16 +70,20 @@ function TripDetails({ id }: { id: string }) {
           setHistory(parsed);
           setTotal(entries.meta.total);
           setOwnDriverId(driverId);
+          setMissing(false);
           setStale(false);
         }
       })
       .catch((cause: unknown) => {
-        if (active)
-          setError(
-            cause instanceof ApiError
-              ? cause.message
-              : 'Could not load the trip and its history. Reload to try again.',
-          );
+        if (active) {
+          if (isNotFound(cause)) setMissing(true);
+          else
+            setError(
+              cause instanceof ApiError
+                ? cause.message
+                : 'Could not load the trip and its history. Reload to try again.',
+            );
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -82,6 +95,7 @@ function TripDetails({ id }: { id: string }) {
   function reload() {
     setLoading(true);
     setError('');
+    setMissing(false);
     setAttempt((value) => value + 1);
   }
   async function transition(event: FormEvent<HTMLFormElement>) {
@@ -138,142 +152,188 @@ function TripDetails({ id }: { id: string }) {
   const now = snapshotTime;
   const startOpens = trip ? new Date(trip.startsAt).getTime() - 15 * 60_000 : 0;
   const startCloses = trip ? new Date(trip.startsAt).getTime() + 30 * 60_000 : 0;
+  const returnTo = isDriver ? '/app/driver/bookings' : '/app/bookings';
   return (
     <JourneyLayout
       title="Trip details"
       introduction="Follow the actual journey. The assigned driver or an administrator records each trip action; the scheduled end does not complete a trip."
+      actions={
+        <>
+          <BackLink to={returnTo}>
+            {isDriver ? 'Back to driver requests' : 'Back to your bookings'}
+          </BackLink>
+          <Button variant="secondary" busy={loading} disabled={busy} onClick={reload}>
+            Reload trip
+          </Button>
+        </>
+      }
     >
-      <Button variant="secondary" busy={loading} disabled={busy} onClick={reload}>
-        Reload trip
-      </Button>
-      {error && <ErrorState message={error} />}
-      {notice && (
-        <p className="success-state" role="status">
-          {notice}
-        </p>
-      )}
-      {loading && !trip ? (
-        <p role="status">Loading trip…</p>
+      {missing ? (
+        <JourneyUnavailable
+          title="Trip unavailable"
+          to={returnTo}
+          action={isDriver ? 'Return to driver requests' : 'Return to your bookings'}
+        />
       ) : (
-        trip && (
-          <>
-            <section aria-label="Saved trip">
-              <StatusBadge>{trip.status}</StatusBadge>
-              <dl className="journey-facts">
-                <dt>Planned start</dt>
-                <dd>{journeyTime(trip.startsAt)}</dd>
-                <dt>Planned end</dt>
-                <dd>{journeyTime(trip.endsAt)}</dd>
-                <dt>Trip reference</dt>
-                <dd>{trip.id}</dd>
-              </dl>
-              {trip.incidentFlag && (
-                <p role="status">
-                  An incident is flagged for administrator review. The recorded trip state remains
-                  in effect.
-                </p>
-              )}
-              {activeTrip && now > new Date(trip.endsAt).getTime() && (
-                <p role="status">
-                  The planned end has passed. This trip remains active until completion or a
-                  recorded failure.
-                </p>
-              )}
-              {trip.status === 'SCHEDULED' && (
-                <p>
-                  The booking is awaiting confirmation. Trip actions become available after the
-                  driver accepts.
-                </p>
-              )}
-            </section>
-            {canOperate && ['ASSIGNED', 'STARTED', 'IN_TRANSIT'].includes(trip.status) && (
-              <form onSubmit={(event) => void transition(event)} noValidate>
-                <fieldset disabled={busy || loading || stale}>
-                  <legend>Update trip</legend>
-                  {trip.status === 'ASSIGNED' && (
-                    <p>
-                      Start window: {journeyTime(new Date(startOpens).toISOString())} to{' '}
-                      {journeyTime(new Date(startCloses).toISOString())}. Reload when the window
-                      opens.
+        <>
+          {error && <ErrorState message={error} />}
+          {notice && (
+            <p className="success-state" role="status">
+              {notice}
+            </p>
+          )}
+          {loading && !trip ? (
+            <p role="status">Loading trip…</p>
+          ) : (
+            trip && (
+              <>
+                <section className="journey-detail-card" aria-label="Saved trip">
+                  <div className="journey-card-heading">
+                    <div>
+                      <h2>{trip.kind === 'CARPOOL' ? 'Carpool journey' : 'Driver hire journey'}</h2>
+                      <p className="journey-meta">
+                        Planned <JourneyTime value={trip.startsAt} /> to{' '}
+                        <JourneyTime value={trip.endsAt} />
+                      </p>
+                    </div>
+                    <JourneyStatus status={trip.status} />
+                  </div>
+                  <dl className="record-facts">
+                    <div>
+                      <dt>Planned start</dt>
+                      <dd>
+                        <JourneyTime value={trip.startsAt} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Planned end</dt>
+                      <dd>
+                        <JourneyTime value={trip.endsAt} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Trip reference</dt>
+                      <dd>{trip.id}</dd>
+                    </div>
+                  </dl>
+                  {trip.incidentFlag && (
+                    <p role="status">
+                      An incident is flagged for administrator review. The recorded trip state
+                      remains in effect.
                     </p>
                   )}
-                  <Field
-                    id="trip-reason"
-                    name="reason"
-                    label="Reason"
-                    maxLength={1000}
-                    hint="Required for a failure or administrator action; use 10–1,000 characters."
-                  />
-                  <div className="action-row">
-                    {trip.status === 'ASSIGNED' && (
-                      <Button
-                        type="submit"
-                        value="STARTED"
-                        busy={busy}
-                        disabled={now < startOpens || now > startCloses}
-                      >
-                        Start trip
-                      </Button>
-                    )}
-                    {trip.status === 'STARTED' && (
-                      <Button type="submit" value="IN_TRANSIT" busy={busy}>
-                        In transit
-                      </Button>
-                    )}
-                    {trip.status === 'IN_TRANSIT' && (
-                      <Button type="submit" value="COMPLETED" busy={busy}>
-                        Complete trip
-                      </Button>
-                    )}
-                    {activeTrip && (
-                      <Button type="submit" value="FAILED" variant="secondary" disabled={busy}>
-                        Report failure
-                      </Button>
+                  {activeTrip && now > new Date(trip.endsAt).getTime() && (
+                    <p role="status">
+                      The planned end has passed. This trip remains active until completion or a
+                      recorded failure.
+                    </p>
+                  )}
+                  {trip.status === 'SCHEDULED' && (
+                    <p>
+                      The booking is awaiting confirmation. Trip actions become available after the
+                      driver accepts.
+                    </p>
+                  )}
+                </section>
+                {canOperate && ['ASSIGNED', 'STARTED', 'IN_TRANSIT'].includes(trip.status) && (
+                  <form
+                    className="journey-action-panel"
+                    onSubmit={(event) => void transition(event)}
+                    noValidate
+                  >
+                    <fieldset disabled={busy || loading || stale}>
+                      <legend>Update trip</legend>
+                      {trip.status === 'ASSIGNED' && (
+                        <p>
+                          Start window: <JourneyTime value={new Date(startOpens).toISOString()} />{' '}
+                          to <JourneyTime value={new Date(startCloses).toISOString()} />. Reload
+                          when the window opens.
+                        </p>
+                      )}
+                      <Field
+                        id="trip-reason"
+                        name="reason"
+                        label="Reason"
+                        maxLength={1000}
+                        hint="Required for a failure or administrator action; use 10–1,000 characters."
+                      />
+                      <div className="action-row">
+                        {trip.status === 'ASSIGNED' && (
+                          <Button
+                            type="submit"
+                            value="STARTED"
+                            busy={busy}
+                            disabled={now < startOpens || now > startCloses}
+                          >
+                            Start trip
+                          </Button>
+                        )}
+                        {trip.status === 'STARTED' && (
+                          <Button type="submit" value="IN_TRANSIT" busy={busy}>
+                            In transit
+                          </Button>
+                        )}
+                        {trip.status === 'IN_TRANSIT' && (
+                          <Button type="submit" value="COMPLETED" busy={busy}>
+                            Complete trip
+                          </Button>
+                        )}
+                        {activeTrip && (
+                          <Button type="submit" value="FAILED" variant="secondary" disabled={busy}>
+                            Report failure
+                          </Button>
+                        )}
+                      </div>
+                    </fieldset>
+                  </form>
+                )}
+                <section className="journey-detail-card" aria-label="Trip history">
+                  <div className="journey-result-heading">
+                    <h2>Trip history</h2>
+                    {total > 0 && (
+                      <p className="journey-result-count">
+                        {total === 1 ? '1 recorded update' : `${total} recorded updates`}
+                      </p>
                     )}
                   </div>
-                </fieldset>
-              </form>
-            )}
-            <section aria-label="Trip history">
-              <h2>Trip history</h2>
-              {history.length ? (
-                <ol className="record-list">
-                  {history.map((entry) => (
-                    <li key={entry.id}>
-                      <p>
-                        {entry.fromStatus} to {entry.toStatus}
-                      </p>
-                      <p className="small-text">
-                        <time dateTime={entry.createdAt}>{journeyTime(entry.createdAt)}</time>
-                      </p>
-                      {entry.reason && <p>{entry.reason}</p>}
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                !loading && (
-                  <EmptyState title="No history is available">
-                    Reload trip to check for recorded updates.
-                  </EmptyState>
-                )
-              )}
-              <Pages
-                page={historyPage}
-                hasMore={historyPage * 20 < total}
-                busy={loading}
-                onPage={(value) => {
-                  setLoading(true);
-                  setError('');
-                  setHistory([]);
-                  setHistoryPage(value);
-                }}
-              />
-            </section>
-            <p>
-              <Link to="/app/bookings">Your bookings</Link>
-            </p>
-          </>
-        )
+                  {history.length ? (
+                    <ol className="record-list journey-list">
+                      {history.map((entry) => (
+                        <li key={entry.id} className="journey-card">
+                          <p>
+                            <strong>{statusLabel(entry.fromStatus)}</strong> to{' '}
+                            <strong>{statusLabel(entry.toStatus)}</strong>
+                          </p>
+                          <p className="small-text">
+                            <JourneyTime value={entry.createdAt} />
+                          </p>
+                          {entry.reason && <p>{entry.reason}</p>}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    !loading && (
+                      <EmptyState title="No history is available">
+                        Reload trip to check for recorded updates.
+                      </EmptyState>
+                    )
+                  )}
+                  <Pages
+                    page={historyPage}
+                    hasMore={historyPage * 20 < total}
+                    busy={loading}
+                    onPage={(value) => {
+                      setLoading(true);
+                      setError('');
+                      setHistory([]);
+                      setHistoryPage(value);
+                    }}
+                  />
+                </section>
+              </>
+            )
+          )}
+        </>
       )}
     </JourneyLayout>
   );
