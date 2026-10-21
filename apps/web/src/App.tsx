@@ -4,13 +4,14 @@ import { CarpoolsPage, HostedCarpoolsPage } from './features/carpools/CarpoolsPa
 import { CarpoolNewPage } from './features/carpools/CarpoolNewPage.js';
 import { CarpoolDetailPage } from './features/carpools/CarpoolDetailPage.js';
 import { SeatsPage } from './features/seats/SeatsPage.js';
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, lazy, Suspense, type ReactNode } from 'react';
 import { BookingsPage, BookingDetailPage } from './features/bookings/BookingsPage.js';
 import { BookingNewPage } from './features/bookings/BookingNewPage.js';
 import { DriversPage, DriverDetailPage } from './features/drivers/DriversPage.js';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { MoveRight } from 'lucide-react';
 import { AuthProvider, ProtectedRoute, useAuth } from './auth/AuthProvider.js';
+import { WorkspaceLayout, workspaceKindFor } from './components/WorkspaceLayout.js';
 import { LoginPage } from './features/auth/LoginPage.js';
 import { RegisterPage } from './features/auth/RegisterPage.js';
 import { VerifyEmailPage } from './features/auth/VerifyEmailPage.js';
@@ -18,6 +19,8 @@ import { ForgotPasswordPage } from './features/auth/ForgotPasswordPage.js';
 import { ResetPasswordPage } from './features/auth/ResetPasswordPage.js';
 import { ProfilePage } from './features/profile/ProfilePage.js';
 import { DriverAvailabilityPage } from './features/providers/DriverAvailabilityPage.js';
+import { DashboardPage } from './features/dashboard/DashboardPage.js';
+import { DriverDashboardPage } from './features/dashboard/DriverDashboardPage.js';
 
 import { VehiclesPage } from './features/providers/VehiclesPage.js';
 import { DriverQualificationPage } from './features/providers/DriverQualificationPage.js';
@@ -32,9 +35,22 @@ const AdminOperationsPage = lazy(() =>
   })),
 );
 
+function WorkspaceFrame({
+  workspace,
+  children,
+}: {
+  workspace: ReturnType<typeof workspaceKindFor>;
+  children: ReactNode;
+}) {
+  const content = <Suspense fallback={<p role="status">Loading journey…</p>}>{children}</Suspense>;
+  if (!workspace) return content;
+  return <WorkspaceLayout workspace={workspace}>{content}</WorkspaceLayout>;
+}
+
 function Shell() {
   const { user } = useAuth();
   const location = useLocation();
+  const workspace = workspaceKindFor(user, location.pathname);
   useEffect(() => {
     document.title = `${location.pathname === '/' ? 'Driver hiring & shared journeys' : location.pathname.slice(1).split('-').join(' ')} · DriveHire`;
     const main = document.getElementById('main');
@@ -58,29 +74,55 @@ function Shell() {
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <header className="site-header">
-        <Link className="wordmark" to="/" aria-label="DriveHire home">
-          <span className="brand-symbol" aria-hidden="true">
-            <MoveRight size={21} />
-          </span>
-          DriveHire<span className="wordmark-detail">&amp; CarPooling</span>
-        </Link>
-        <nav aria-label="Main navigation">
-          {user ? (
-            <Link to="/profile">Your profile</Link>
-          ) : (
-            <>
-              <Link to="/login">Sign in</Link>
-              <Link className="nav-join" to="/register">
-                Create account
-              </Link>
-            </>
-          )}
-        </nav>
-      </header>
-      <main id="main" tabIndex={-1}>
-        <Suspense fallback={<p role="status">Loading journey…</p>}>
+      <div className="site-header-wrapper">
+        <header className={workspace ? 'site-header workspace-header' : 'site-header'}>
+          <Link className="wordmark" to="/" aria-label="DriveHire home">
+            <span className="brand-symbol" aria-hidden="true">
+              <MoveRight size={19} />
+            </span>
+            DriveHire<span className="wordmark-detail">&amp; CarPooling</span>
+          </Link>
+          <nav aria-label="Main navigation">
+            {user ? (
+              <>
+                <Link
+                  className="nav-dashboard"
+                  to={user.roles.includes('DRIVER') ? '/app/driver/dashboard' : '/app/dashboard'}
+                >
+                  Dashboard
+                </Link>
+                <Link to="/profile">Your profile</Link>
+              </>
+            ) : (
+              <>
+                <Link to="/login">Sign in</Link>
+                <Link className="nav-join" to="/register">
+                  Create account
+                </Link>
+              </>
+            )}
+          </nav>
+        </header>
+      </div>
+      <main id="main" tabIndex={-1} className={workspace ? 'workspace-main' : 'public-main'}>
+        <WorkspaceFrame workspace={workspace}>
           <Routes>
+            <Route
+              path="/app/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/app/driver/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DriverDashboardPage />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/app/profile" element={<Navigate to="/profile" replace />} />
             <Route path="/app/vehicles" element={<Navigate to="/vehicles" replace />} />
             <Route
@@ -94,7 +136,7 @@ function Shell() {
             <Route
               path="/admin/audit"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="ADMIN">
                   <AuditPage />
                 </ProtectedRoute>
               }
@@ -104,7 +146,7 @@ function Shell() {
             <Route
               path="/app/carpools"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="DRIVER">
                   <HostedCarpoolsPage />
                 </ProtectedRoute>
               }
@@ -112,7 +154,7 @@ function Shell() {
             <Route
               path="/app/carpools/new"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="DRIVER">
                   <CarpoolNewPage key="new" />
                 </ProtectedRoute>
               }
@@ -120,7 +162,7 @@ function Shell() {
             <Route
               path="/app/carpools/:id/edit"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="DRIVER">
                   <CarpoolNewPage key="edit" />
                 </ProtectedRoute>
               }
@@ -128,7 +170,7 @@ function Shell() {
             <Route
               path="/app/seats"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="CUSTOMER">
                   <SeatsPage />
                 </ProtectedRoute>
               }
@@ -144,7 +186,7 @@ function Shell() {
             <Route
               path="/admin/operations"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="ADMIN">
                   <AdminOperationsPage />
                 </ProtectedRoute>
               }
@@ -152,7 +194,7 @@ function Shell() {
             <Route
               path="/app/bookings"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="CUSTOMER">
                   <BookingsPage key="passenger" />
                 </ProtectedRoute>
               }
@@ -160,7 +202,7 @@ function Shell() {
             <Route
               path="/app/bookings/:id"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="CUSTOMER">
                   <BookingDetailPage />
                 </ProtectedRoute>
               }
@@ -168,7 +210,7 @@ function Shell() {
             <Route
               path="/app/driver/bookings"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="DRIVER">
                   <BookingsPage key="driver" driver />
                 </ProtectedRoute>
               }
@@ -176,7 +218,7 @@ function Shell() {
             <Route
               path="/app/bookings/new"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="CUSTOMER">
                   <BookingNewPage />
                 </ProtectedRoute>
               }
@@ -195,7 +237,7 @@ function Shell() {
             <Route
               path="/driver/qualification"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="DRIVER">
                   <DriverQualificationPage />
                 </ProtectedRoute>
               }
@@ -203,7 +245,7 @@ function Shell() {
             <Route
               path="/admin/verifications"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="ADMIN">
                   <VerificationPage />
                 </ProtectedRoute>
               }
@@ -211,7 +253,7 @@ function Shell() {
             <Route
               path="/admin/users"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="ADMIN">
                   <UsersPage />
                 </ProtectedRoute>
               }
@@ -224,7 +266,7 @@ function Shell() {
             <Route
               path="/driver/availability"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute role="DRIVER">
                   <DriverAvailabilityPage />
                 </ProtectedRoute>
               }
@@ -248,10 +290,11 @@ function Shell() {
               }
             />
           </Routes>
-        </Suspense>
+        </WorkspaceFrame>
       </main>
-      <footer className="site-footer">
-        <span>DriveHire &amp; CarPooling</span>
+      <footer className={workspace ? 'site-footer workspace-footer' : 'site-footer'}>
+        <span>© 2026 DriveHire &amp; CarPooling</span>
+        <span>Payment not collected by DriveHire.</span>
         <span>A clearer way to plan your journey.</span>
       </footer>
     </>

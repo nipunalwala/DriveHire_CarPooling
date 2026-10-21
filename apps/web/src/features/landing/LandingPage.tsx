@@ -7,14 +7,14 @@ const services = [
   {
     image: 'driver-hiring',
     title: 'Driver hiring',
-    description: 'A driver for your approved personal vehicle.',
+    description: 'A qualified, approved driver for your own personal vehicle — on your terms.',
     href: '/drivers',
     action: 'Find a driver',
   },
   {
     image: 'shared-journey',
     title: 'Shared journeys',
-    description: 'A seat in a scheduled, instant-join carpool.',
+    description: 'Instantly join a scheduled carpool — no host approval, just a seat.',
     href: '/carpools',
     action: 'Find a carpool',
   },
@@ -24,17 +24,27 @@ export function LandingPage() {
   const { user } = useAuth();
   return (
     <section className="landing-intro landing-page">
+      <p className="landing-eyebrow">Driver hiring &amp; carpooling in India</p>
       <h1>
         Your journey.
         <br />A little more together.
       </h1>
       <p>
-        Hire a driver for your own vehicle, or share a scheduled journey with a carpool. Start with
-        an account, then choose your next step.
+        Hire an approved driver for your own vehicle, or share a scheduled journey with a carpool.
+        Start with an account, then choose your next step.
       </p>
-      <Link className="button button-primary" to={user ? '/profile' : '/register'}>
-        {user ? 'Go to your profile' : 'Create your account'}
-        <MoveRight size={19} aria-hidden="true" />
+      <Link
+        className="button button-primary"
+        to={
+          user
+            ? user.roles.includes('DRIVER')
+              ? '/app/driver/dashboard'
+              : '/app/dashboard'
+            : '/register'
+        }
+      >
+        {user ? 'Go to your dashboard' : 'Create your account'}
+        <MoveRight size={17} aria-hidden="true" />
       </Link>
       <div className="service-summary">
         {services.map((service) => (
@@ -53,7 +63,7 @@ export function LandingPage() {
             <p>{service.description}</p>
             <Link to={service.href}>
               {service.action}
-              <MoveRight size={17} aria-hidden="true" />
+              <MoveRight size={16} aria-hidden="true" />
             </Link>
           </article>
         ))}

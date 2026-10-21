@@ -11,6 +11,8 @@ import { api } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthProvider.js';
 import { Button, ErrorState, Field } from '../../components/ui/index.js';
 type Mode = 'login' | 'register' | 'verify-email' | 'forgot-password' | 'reset-password';
+type LoginRole = 'CUSTOMER' | 'DRIVER';
+type RegistrationRole = 'CUSTOMER' | 'DRIVER';
 const copy = {
   login: ['Welcome back', 'Sign in to manage your journeys and your account.', 'Sign in'],
   register: [
@@ -50,6 +52,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState('');
   const [resendAt, setResendAt] = useState(0);
+  const [loginRole, setLoginRole] = useState<LoginRole>(
+    params.get('role') === 'driver' ? 'DRIVER' : 'CUSTOMER',
+  );
+  const [registrationRole, setRegistrationRole] = useState<RegistrationRole>(
+    params.get('role') === 'driver' ? 'DRIVER' : 'CUSTOMER',
+  );
   const [title, intro, action] = copy[mode];
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -59,7 +67,17 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setErrors({});
     const data = Object.fromEntries(new FormData(event.currentTarget)) as Record<string, string>;
     if (data.email) data.email = data.email.trim().toLowerCase();
-    const result = schemas[mode].safeParse(data);
+    const requestData =
+      mode === 'register'
+        ? {
+            displayName: data.displayName ?? '',
+            email: data.email ?? '',
+            password: data.password ?? '',
+            role: registrationRole,
+          }
+        : data;
+    if (mode === 'login') delete requestData.loginRole;
+    const result = schemas[mode].safeParse(requestData);
     if (!result.success) {
       const fields: Record<string, string> = {};
       for (const issue of result.error.issues) fields[String(issue.path[0])] ??= issue.message;
@@ -70,19 +88,42 @@ export function AuthForm({ mode }: { mode: Mode }) {
     setBusy(true);
     try {
       if (mode === 'login') {
-        await auth.login(data.email ?? '', data.password ?? '');
+        const loggedInUser = await auth.login(data.email ?? '', data.password ?? '');
+        if (loginRole === 'DRIVER' && !loggedInUser.roles.includes('DRIVER')) {
+          await auth.logout().catch(() => undefined);
+          setError(
+            'This account does not have driver access yet. Sign in as a customer or enable driver capability from your profile.',
+          );
+          return;
+        }
+        if (loginRole === 'CUSTOMER' && loggedInUser.roles.includes('DRIVER')) {
+          await auth.logout().catch(() => undefined);
+          setError(
+            'This account has driver access. Choose Driver to continue to the driver workspace.',
+          );
+          return;
+        }
         const next = params.get('next');
         navigate(
-          next?.startsWith('/') && !next.startsWith('//') && !next.includes('\\')
+          next &&
+            next.startsWith('/') &&
+            !next.startsWith('//') &&
+            !next.includes('\\') &&
+            (loginRole === 'CUSTOMER' || next.startsWith('/app/driver/'))
             ? next
-            : '/profile',
+            : loginRole === 'DRIVER'
+              ? '/app/driver/dashboard'
+              : '/app/dashboard',
           { replace: true },
         );
       } else {
         await api.request(`/auth/${mode}`, { method: 'POST', body: JSON.stringify(result.data) });
         if (mode === 'register')
-          navigate(`/verify-email?email=${encodeURIComponent(data.email ?? '')}`);
-        else if (mode === 'verify-email') navigate('/login?verified=1', { replace: true });
+          navigate(
+            `/verify-email?email=${encodeURIComponent(data.email ?? '')}&role=${registrationRole.toLowerCase()}`,
+          );
+        else if (mode === 'verify-email')
+          navigate(`/login?verified=1&role=${params.get('role') ?? 'customer'}`, { replace: true });
         else if (mode === 'reset-password') navigate('/login?reset=1', { replace: true });
         else
           setNotice(
@@ -123,7 +164,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
     <section className="auth-layout">
       <div className="auth-introduction">
         <Link className="back-link" to="/">
-          Back to DriveHire
+          DriveHire home
         </Link>
         <h1>{title}</h1>
         <p>{intro}</p>
@@ -156,6 +197,35 @@ export function AuthForm({ mode }: { mode: Mode }) {
             <p className="success-state" role="status">
               {notice}
             </p>
+          )}
+          {mode === 'register' && (
+            <fieldset className="login-role-picker registration-role-picker">
+              <legend>Create account as</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="role"
+                  value="CUSTOMER"
+                  checked={registrationRole === 'CUSTOMER'}
+                  onChange={() => setRegistrationRole('CUSTOMER')}
+                />
+                Customer
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="registrationRole"
+                  value="DRIVER"
+                  checked={registrationRole === 'DRIVER'}
+                  onChange={() => setRegistrationRole('DRIVER')}
+                />
+                Driver
+              </label>
+              <p className="role-picker-help">
+                Drivers continue to qualification and availability setup after verifying their
+                email.
+              </p>
+            </fieldset>
           )}
           {mode === 'register' && (
             <Field
@@ -195,6 +265,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   : undefined
               }
               error={errors.password}
+              revealPassword
             />
           )}
           {mode === 'verify-email' && (
@@ -232,6 +303,31 @@ export function AuthForm({ mode }: { mode: Mode }) {
                 error={errors.newPassword}
               />
             </>
+          )}
+          {mode === 'login' && (
+            <fieldset className="login-role-picker">
+              <legend>Sign in as</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="loginRole"
+                  value="CUSTOMER"
+                  checked={loginRole === 'CUSTOMER'}
+                  onChange={() => setLoginRole('CUSTOMER')}
+                />
+                Customer
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="loginRole"
+                  value="DRIVER"
+                  checked={loginRole === 'DRIVER'}
+                  onChange={() => setLoginRole('DRIVER')}
+                />
+                Driver
+              </label>
+            </fieldset>
           )}
           {mode === 'login' && (
             <Link className="form-link" to="/forgot-password">
