@@ -5,13 +5,9 @@ import { api } from '../../../api/client.js';
 import { useAuth } from '../../../auth/AuthProvider.js';
 import { Button, EmptyState, ErrorState, Field } from '../../../components/ui/index.js';
 import { Pages } from '../../providers/ProviderLayout.js';
-import { JourneyLayout, journeyTime } from '../../bookings/JourneyLayout.js';
-function local(value: string | null) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-}
+import { journeyTime, statusLabel } from '../../bookings/JourneyLayout.js';
+import { AdminForbidden, AdminPage, AdminResultHeading, adminLocalDateTime } from '../AdminUi.js';
+
 export function AuditPage() {
   const { user } = useAuth();
   const allowed = Boolean(user?.roles.includes('ADMIN'));
@@ -47,8 +43,8 @@ export function AuditPage() {
           setTotal(0);
           setError(
             cause instanceof Error
-              ? cause.message
-              : 'Could not load audit entries. Reload to try again.',
+              ? `${cause.message} The current filters have been kept. Use Reload audit to retry.`
+              : 'Could not load audit entries. The current filters have been kept. Use Reload audit to retry.',
           );
         }
       })
@@ -79,8 +75,12 @@ export function AuditPage() {
     ] as const)
       if (value) search.set(name, new Date(value).toISOString());
     search.set('page', '1');
+    setError('');
     setParams(search);
-    setAttempt((value) => value + 1);
+  }
+  function resetFilters() {
+    setError('');
+    setParams(new URLSearchParams());
   }
   function changePage(next: number) {
     const search = new URLSearchParams(params);
@@ -88,102 +88,136 @@ export function AuditPage() {
     setParams(search);
   }
   return (
-    <JourneyLayout
+    <AdminPage
       title="Administrative audit"
       introduction="Inspect immutable administrative actions. Audit entries cannot be edited or deleted here."
     >
       {!allowed ? (
-        <EmptyState title="Administrator access is required">
-          This area is available to current administrators only.
-        </EmptyState>
+        <AdminForbidden area="administrative audit area" />
       ) : (
         <>
-          <form key={query} onSubmit={apply} aria-label="Audit filters">
-            <Field
-              id="audit-action"
-              name="action"
-              label="Action"
-              maxLength={100}
-              defaultValue={params.get('action') ?? ''}
-              hint="Exact action, for example ADMIN_USER_READ."
-            />
-            <Field
-              id="audit-actor"
-              name="actorId"
-              label="Actor ID"
-              pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-              defaultValue={params.get('actorId') ?? ''}
-            />
-            <div className="form-columns">
+          <div className="admin-toolbar">
+            <form key={query} className="admin-filters" onSubmit={apply} aria-label="Audit filters">
+              <Field
+                id="audit-action"
+                name="action"
+                label="Action"
+                maxLength={100}
+                defaultValue={params.get('action') ?? ''}
+                hint="Exact action, for example ADMIN_USER_READ."
+              />
+              <Field
+                id="audit-actor"
+                name="actorId"
+                label="Actor ID"
+                pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                defaultValue={params.get('actorId') ?? ''}
+              />
               <Field
                 id="audit-from"
                 name="from"
                 label="From (local time)"
                 type="datetime-local"
-                defaultValue={local(params.get('from'))}
+                defaultValue={adminLocalDateTime(params.get('from'))}
               />
               <Field
                 id="audit-to"
                 name="to"
                 label="To (local time)"
                 type="datetime-local"
-                defaultValue={local(params.get('to'))}
+                defaultValue={adminLocalDateTime(params.get('to'))}
               />
+              <div className="admin-filter-actions">
+                <Button type="submit" variant="secondary" busy={loading}>
+                  Apply filters
+                </Button>
+                <Button type="button" variant="ghost" onClick={resetFilters}>
+                  Reset filters
+                </Button>
+              </div>
+            </form>
+            <div className="admin-toolbar-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                busy={loading}
+                onClick={() => setAttempt((value) => value + 1)}
+              >
+                Reload audit
+              </Button>
             </div>
-            <Button type="submit" busy={loading}>
-              Apply filters
-            </Button>
-          </form>
-          {!loading && error && <ErrorState message={error} />}
-          <Button
-            type="button"
-            variant="secondary"
-            busy={loading}
-            onClick={() => setAttempt((value) => value + 1)}
+          </div>
+
+          <AdminResultHeading
+            title="Audit entries"
+            count={loading || error ? null : total}
+            noun="audit entry"
+            plural="audit entries"
           >
-            Reload audit
-          </Button>
+            <p className="admin-inline-note">Entries are immutable and cannot be edited here.</p>
+          </AdminResultHeading>
+
+          {!loading && error && <ErrorState message={error} />}
           {loading ? (
             <p role="status">Loading audit entries…</p>
           ) : !error && !rows.length ? (
             <EmptyState title="No audit entries match">
-              Change the filters to inspect other administrative actions.
+              Change the filters or reset them to inspect other administrative actions.
             </EmptyState>
-          ) : (
-            <ol className="record-list" aria-label="Audit entries">
-              {rows.map((row) => (
-                <li key={row.id} data-audit-entry>
-                  <h2>{row.action}</h2>
-                  <p>{journeyTime(row.createdAt)}</p>
-                  <dl className="record-facts">
-                    <div>
-                      <dt>Actor</dt>
-                      <dd>{row.actorId ?? 'System worker'}</dd>
-                    </div>
-                    <div>
-                      <dt>Subject</dt>
-                      <dd>
-                        {row.subjectType} · {row.subjectId}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Request</dt>
-                      <dd>{row.requestId}</dd>
-                    </div>
-                    {row.reason && (
-                      <div>
-                        <dt>Reason</dt>
-                        <dd>{row.reason}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </li>
-              ))}
-            </ol>
+          ) : error ? null : (
+            <>
+              <div className="admin-table-wrap">
+                <table className="admin-table admin-audit-table">
+                  <caption className="admin-visually-hidden">
+                    Immutable administrative audit entries matching the current filters
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Time</th>
+                      <th scope="col">Action</th>
+                      <th scope="col">Actor</th>
+                      <th scope="col">Subject</th>
+                      <th scope="col">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <tr key={row.id} data-audit-entry>
+                        <td className="admin-cell-time">
+                          <time dateTime={row.createdAt}>{journeyTime(row.createdAt)}</time>
+                        </td>
+                        <td className="admin-cell-action-name">
+                          <span className="admin-cell-title">{statusLabel(row.action)}</span>
+                          <span className="admin-ref">{row.action}</span>
+                        </td>
+                        <td className="admin-cell-actor">
+                          <span className="admin-ref">{row.actorId ?? 'System worker'}</span>
+                        </td>
+                        <td className="admin-cell-subject">
+                          <span className="admin-cell-title">{statusLabel(row.subjectType)}</span>
+                          <span className="admin-ref">{row.subjectId}</span>
+                          <details className="admin-details">
+                            <summary>Request metadata</summary>
+                            <p className="admin-ref">Request: {row.requestId}</p>
+                          </details>
+                        </td>
+                        <td className="admin-cell-reason">
+                          {row.reason ? (
+                            <span className="admin-reason">{row.reason}</span>
+                          ) : (
+                            <span className="admin-muted">No reason recorded</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <Pages page={page} hasMore={page * 20 < total} busy={loading} onPage={changePage} />
+            </>
           )}
-          <Pages page={page} hasMore={page * 20 < total} busy={loading} onPage={changePage} />
         </>
       )}
-    </JourneyLayout>
+    </AdminPage>
   );
 }

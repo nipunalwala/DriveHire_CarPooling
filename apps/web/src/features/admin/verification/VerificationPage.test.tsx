@@ -4,6 +4,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 
+vi.setConfig({ testTimeout: 20000 });
+
 const { request, requestPage, ADMIN_USER } = vi.hoisted(() => ({
   request: vi.fn(),
   requestPage: vi.fn(),
@@ -130,4 +132,66 @@ it('keeps the draft reason when the same request is reloaded for conflict recove
       'Kept for conflict recovery after a 409',
     ),
   );
+});
+
+it('stops a stale decision, keeps the reason and sends the reviewed version', async () => {
+  const { ApiError } = await import('../../../api/client.js');
+  request.mockImplementation((path: string) => {
+    if (path.endsWith('/decision'))
+      return Promise.reject(new ApiError('This review changed before your decision.', 409));
+    return Promise.resolve(REQUEST_A);
+  });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole('button', { name: 'Review driver request 1' }));
+  await screen.findByRole('form', { name: 'Review decision' });
+  fireEvent.change(screen.getByLabelText('Decision'), { target: { value: 'APPROVE' } });
+  fireEvent.change(screen.getByLabelText('Reason'), {
+    target: { value: 'Documents and expiry dates verified in the current revision' },
+  });
+  fireEvent.submit(screen.getByRole('form', { name: 'Review decision' }));
+
+  await screen.findByText(/This review changed\. Reload review/);
+  const decision = screen.getByLabelText('Decision') as HTMLSelectElement;
+  expect((decision.closest('fieldset') as HTMLFieldSetElement).disabled).toBe(true);
+  expect((screen.getByLabelText('Reason') as HTMLInputElement).value).toBe(
+    'Documents and expiry dates verified in the current revision',
+  );
+  expect(request).toHaveBeenCalledWith(
+    `/admin/verifications/${REQUEST_A.id}/decision`,
+    expect.objectContaining({
+      method: 'POST',
+      body: expect.stringContaining('"version":1'),
+    }),
+  );
+});
+
+it('reports a failed queue load without claiming that no reviews match', async () => {
+  requestPage.mockRejectedValueOnce(new Error('The review queue is temporarily unavailable.'));
+  renderPage();
+  expect((await screen.findByRole('alert')).textContent).toMatch(/temporarily unavailable/i);
+  expect(screen.queryByText('No reviews match')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+});
+
+it('retries a failed queue load from the toolbar and restores the review rows', async () => {
+  requestPage.mockRejectedValueOnce(new Error('The review queue is temporarily unavailable.'));
+  renderPage();
+  expect((await screen.findByRole('alert')).textContent).toMatch(/temporarily unavailable/i);
+
+  fireEvent.click(screen.getByRole('button', { name: 'Reload queue' }));
+  expect(await screen.findByRole('button', { name: 'Review driver request 1' })).toBeDefined();
+  expect(requestPage).toHaveBeenCalledTimes(2);
+});
+
+it('shows the forbidden state without loading review data', () => {
+  const originalRoles = [...ADMIN_USER.roles];
+  (ADMIN_USER as { roles: string[] }).roles = ['PASSENGER'];
+  try {
+    renderPage();
+    expect(screen.getByText('Administrator access is required')).toBeDefined();
+    expect(requestPage).not.toHaveBeenCalled();
+  } finally {
+    (ADMIN_USER as { roles: string[] }).roles = originalRoles;
+  }
 });

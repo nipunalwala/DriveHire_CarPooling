@@ -36,7 +36,11 @@ export function PrivateEvidence({ id, index }: { id: string; index: number }) {
     <li>
       {error && <ErrorState message={error} />}
       {url ? (
-        <a href={url} download={`private-evidence-${index}`}>
+        <a
+          className="button button-secondary button-compact"
+          href={url}
+          download={`private-evidence-${index}`}
+        >
           Download private evidence {index}
         </a>
       ) : (

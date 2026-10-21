@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { BookingDto } from '@drivehire/contracts';
+
+vi.setConfig({ testTimeout: 20000 });
 
 const { request, requestPage, ADMIN_USER } = vi.hoisted(() => ({
   request: vi.fn(),
@@ -115,6 +117,8 @@ function lastQuery() {
 it('applies From/To date filters as UTC bounds and resets page 2 to page 1', async () => {
   renderPage();
   await screen.findByText(`Reference: ${BOOKING_A.id}`);
+  expect(screen.getByText('45 bookings')).toBeDefined();
+  expect(screen.queryByText('45 bookingss')).toBeNull();
 
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   await waitFor(() => expect(requestPage).toHaveBeenCalledTimes(2));
@@ -156,4 +160,59 @@ it('rejects reversed date bounds, preserves the inputs and sends no new query', 
 
   await new Promise((resolve) => setTimeout(resolve, 25));
   expect(requestPage).toHaveBeenCalledTimes(before);
+});
+
+it('selects a journey record into a useful detail panel with its authorized record link', async () => {
+  renderPage();
+  await screen.findByText(`Reference: ${BOOKING_A.id}`);
+
+  fireEvent.click(screen.getByRole('button', { name: `Inspect booking ${BOOKING_A.id}` }));
+
+  const detail = await screen.findByRole('complementary', { name: 'Selected journey record' });
+  expect(within(detail).getByText('Booking record')).toBeDefined();
+  expect(within(detail).getByText('Version')).toBeDefined();
+  expect(within(detail).getByText('Pending')).toBeDefined();
+  expect(within(detail).getByRole('link', { name: 'Open booking' }).getAttribute('href')).toBe(
+    `/app/bookings/${BOOKING_A.id}`,
+  );
+
+  fireEvent.click(screen.getByRole('button', { name: `Inspect booking ${BOOKING_A.id}` }));
+  expect(screen.queryByRole('complementary', { name: 'Selected journey record' })).toBeNull();
+});
+
+it('hides pagination for an empty result set and keeps the reset action available', async () => {
+  requestPage.mockResolvedValue({
+    success: true as const,
+    data: [],
+    meta: { page: 1, pageSize: 20, total: 0 },
+  });
+  renderPage();
+  expect(await screen.findByText('No bookings match')).toBeDefined();
+  expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Previous' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Reset filters' })).toBeDefined();
+});
+
+it('reports a failed load, keeps the filters and retries from the same toolbar', async () => {
+  const { ApiError } = await import('../../../api/client.js');
+  requestPage.mockRejectedValueOnce(new ApiError('Operations are temporarily unavailable.', 503));
+  renderPage();
+  expect((await screen.findByRole('alert')).textContent).toMatch(/temporarily unavailable/i);
+  expect(screen.getByText(/current filters have been kept/i)).toBeDefined();
+
+  fireEvent.click(screen.getByRole('button', { name: 'Reload operations' }));
+  await screen.findByText(`Reference: ${BOOKING_A.id}`);
+  expect(requestPage).toHaveBeenCalledTimes(2);
+});
+
+it('shows the forbidden state without requesting journey operations', () => {
+  const originalRoles = [...ADMIN_USER.roles];
+  ADMIN_USER.roles = ['PASSENGER'];
+  try {
+    renderPage();
+    expect(screen.getByText('Administrator access is required')).toBeDefined();
+    expect(requestPage).not.toHaveBeenCalled();
+  } finally {
+    ADMIN_USER.roles = originalRoles;
+  }
 });
