@@ -1,4 +1,11 @@
-import { useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+} from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 
 export function Button({
   children,
@@ -7,7 +14,7 @@ export function Button({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   busy?: boolean;
-  variant?: 'primary' | 'secondary';
+  variant?: 'primary' | 'secondary' | 'ghost';
 }) {
   return (
     <button
@@ -24,20 +31,47 @@ export function Field({
   label,
   hint,
   error,
+  revealPassword,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & {
   id: string;
   label: string;
   hint?: string | undefined;
   error?: string | undefined;
+  revealPassword?: boolean;
 }) {
+  const [isRevealed, setIsRevealed] = useState(false);
   const description = [hint ? `${props.id}-hint` : '', error ? `${props.id}-error` : '']
     .filter(Boolean)
     .join(' ');
   return (
     <div className="field">
       <label htmlFor={props.id}>{label}</label>
-      <input {...props} aria-invalid={Boolean(error)} aria-describedby={description || undefined} />
+      {revealPassword && (
+        <div className="field-input-wrapper-reveal">
+          <input
+            {...props}
+            type={isRevealed ? 'text' : 'password'}
+            aria-invalid={Boolean(error)}
+            aria-describedby={description || undefined}
+          />
+          <button
+            type="button"
+            className="eye-toggle"
+            aria-label={isRevealed ? 'Hide password' : 'Show password'}
+            onClick={() => setIsRevealed((prev) => !prev)}
+          >
+            {isRevealed ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+          </button>
+        </div>
+      )}
+      {!revealPassword && (
+        <input
+          {...props}
+          aria-invalid={Boolean(error)}
+          aria-describedby={description || undefined}
+        />
+      )}
       {hint && (
         <span className="field-hint" id={`${props.id}-hint`}>
           {hint}
@@ -72,5 +106,10 @@ export function EmptyState({ title, children }: { title: string; children: React
   );
 }
 export function StatusBadge({ children }: { children: React.ReactNode }) {
-  return <span className="status-badge">{children}</span>;
+  const status = typeof children === 'string' ? children : undefined;
+  return (
+    <span className="status-badge" data-status={status}>
+      {children}
+    </span>
+  );
 }

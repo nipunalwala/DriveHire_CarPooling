@@ -116,7 +116,7 @@ it('shows the persisted rejection reason for a rejected driver qualification', a
     </MemoryRouter>,
   );
 
-  await screen.findByText('REJECTED');
+  expect((await screen.findAllByText('REJECTED')).length).toBeGreaterThan(0);
 
   expect(screen.getByText(DRIVER_REASON)).toBeTruthy();
 });

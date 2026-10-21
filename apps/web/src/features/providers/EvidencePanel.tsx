@@ -4,6 +4,29 @@ import { api } from '../../api/client.js';
 import { Button, EmptyState, ErrorState, Field, StatusBadge } from '../../components/ui/index.js';
 import { messageOf, Pages, SelectField } from './ProviderLayout.js';
 
+const kindLabel = (kind: string) =>
+  kind === 'LICENSE' ? 'License' : kind === 'REGISTRATION' ? 'Registration' : 'Insurance';
+
+function nextStepFor(status: string, documents: DocumentDto[], isDriver: boolean) {
+  if (status === 'PENDING')
+    return 'Review is pending. Reload status to check the administrator’s decision.';
+  if (status === 'REJECTED')
+    return 'Review was rejected. Correct your details and evidence, then submit a new revision.';
+  if (status === 'EXPIRED')
+    return 'Approval has expired. Update your details and upload current evidence before resubmitting.';
+  if (!documents.length)
+    return `Upload ${isDriver ? 'your license' : 'registration and insurance evidence'} to prepare for review.`;
+  if (documents.some((document) => document.scanStatus === 'REJECTED'))
+    return 'One or more scans were rejected. Replace them with a clear JPEG, PNG, WebP or PDF before submitting.';
+  if (documents.some((document) => document.scanStatus === 'PENDING'))
+    return 'Scan checks are still running. Reload status before submitting.';
+  if (status === 'APPROVED')
+    return isDriver
+      ? 'Qualification is approved. Add replacement evidence if a document changes or expires.'
+      : 'Vehicle is approved. Add replacement evidence if a document changes or expires.';
+  return 'Evidence scans are clean. Submit for review when your details are current.';
+}
+
 export function EvidencePanel({
   basePath,
   version,
@@ -125,30 +148,36 @@ export function EvidencePanel({
     }
   }
   return (
-    <section className="profile-section" aria-label="Private evidence">
-      <h2>Private evidence</h2>
-      <p role="status">Current qualification: {status}.</p>
+    <section className="profile-section evidence-panel" aria-label="Private evidence">
+      <div className="section-heading">
+        <div>
+          <p className="section-kicker">Review support</p>
+          <h2>Private evidence</h2>
+        </div>
+        <StatusBadge>{status}</StatusBadge>
+      </div>
       <p>
         Files stay private. Only clean scans can be submitted, and an administrator must approve
-        your qualification.
+        this record.
       </p>
+      {!loading && <p className="next-step">{nextStepFor(status, documents, isDriver)}</p>}
       {error && <ErrorState message={error} />}
       {notice && (
         <p role="status" className="success-state">
           {notice}
         </p>
       )}
-      <form onSubmit={(event) => void upload(event)} aria-label="Upload private evidence">
+      <form
+        className="evidence-form"
+        onSubmit={(event) => void upload(event)}
+        aria-label="Upload private evidence"
+      >
         <fieldset disabled={busy || status === 'PENDING'}>
           <legend>Upload a document</legend>
           <SelectField id="kind" name="kind" label="Document type">
             {(isDriver ? ['LICENSE'] : ['REGISTRATION', 'INSURANCE']).map((kind) => (
               <option key={kind} value={kind}>
-                {kind === 'LICENSE'
-                  ? 'License'
-                  : kind === 'REGISTRATION'
-                    ? 'Registration'
-                    : 'Insurance'}
+                {kindLabel(kind)}
               </option>
             ))}
           </SelectField>
@@ -167,19 +196,21 @@ export function EvidencePanel({
             label="Document expiry date (optional)"
             type="date"
           />
-          <Button type="submit" busy={busy}>
-            Upload document
-          </Button>
+          <div className="form-actions">
+            <Button type="submit" busy={busy}>
+              Upload document
+            </Button>
+          </div>
         </fieldset>
       </form>
       <div aria-busy={loading}>
         {loading ? (
           <p role="status">Loading documents…</p>
         ) : documents.length ? (
-          <ul className="record-list">
+          <ul className="record-list evidence-list">
             {documents.map((document) => (
               <li key={document.id}>
-                <strong>{document.kind}</strong>
+                <strong>{kindLabel(document.kind)}</strong>
                 <p>
                   <StatusBadge>{document.scanStatus}</StatusBadge> · Uploaded{' '}
                   {new Date(document.createdAt).toLocaleDateString()}
@@ -190,8 +221,9 @@ export function EvidencePanel({
                   variant="secondary"
                   disabled={busy || status === 'PENDING'}
                   onClick={() => void retire(document.id)}
+                  aria-label={`Remove ${kindLabel(document.kind).toLowerCase()} document`}
                 >
-                  Remove {document.kind.toLowerCase()} document
+                  Remove document
                 </Button>
               </li>
             ))}
@@ -204,10 +236,10 @@ export function EvidencePanel({
         )}
       </div>
       <Pages page={page} hasMore={hasMore} busy={busy || loading} onPage={setPage} />
-      <div className="action-row">
+      <div className="form-actions">
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           disabled={busy}
           onClick={() => {
             setError('');
@@ -225,17 +257,6 @@ export function EvidencePanel({
           Submit for review
         </Button>
       </div>
-      {status === 'PENDING' && (
-        <p>Review is pending. Reload status to check the administrator’s decision.</p>
-      )}
-      {status === 'REJECTED' && (
-        <p>Review was rejected. Correct your details and evidence, then submit a new revision.</p>
-      )}
-      {status === 'EXPIRED' && (
-        <p>
-          Approval has expired. Update your details and upload current evidence before resubmitting.
-        </p>
-      )}
     </section>
   );
 }

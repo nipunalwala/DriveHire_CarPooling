@@ -11,6 +11,48 @@ import { Button, ErrorState, Field, StatusBadge } from '../../components/ui/inde
 import { CitySelect, messageOf, ProviderLayout } from './ProviderLayout.js';
 import { EvidencePanel } from './EvidencePanel.js';
 
+function qualificationSummary(driver: DriverPrivateDto | null) {
+  const status = driver?.verificationStatus;
+  if (!driver) {
+    return {
+      title: 'Qualification not started',
+      guidance:
+        'Enter your license details and service information, upload your license, then submit for review.',
+    };
+  }
+  switch (status) {
+    case 'PENDING':
+      return {
+        title: 'Under review',
+        guidance:
+          'Submitted for review. License details and evidence are locked until an administrator decides.',
+      };
+    case 'APPROVED':
+      return {
+        title: 'Approved',
+        guidance:
+          'Qualification is approved. Keep your license details and private evidence current.',
+      };
+    case 'REJECTED':
+      return {
+        title: 'Changes requested',
+        guidance:
+          'Review the feedback, update your details or evidence, then submit a new revision.',
+      };
+    case 'EXPIRED':
+      return {
+        title: 'Approval expired',
+        guidance:
+          'Update your license details and upload current evidence before submitting for review again.',
+      };
+    default:
+      return {
+        title: 'Draft saved',
+        guidance: 'Add current license evidence, then submit your qualification for review.',
+      };
+  }
+}
+
 export function DriverQualificationPage() {
   const { user } = useAuth();
   const [driver, setDriver] = useState<DriverPrivateDto | null>(null);
@@ -19,6 +61,8 @@ export function DriverQualificationPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const allowed = user?.roles.includes('DRIVER') ?? false;
+  const status = driver?.verificationStatus ?? 'DRAFT';
+  const summary = qualificationSummary(driver);
   async function reload() {
     setDriver(DriverPrivateSchema.parse(await api.request('/drivers/me')));
   }
@@ -112,7 +156,9 @@ export function DriverQualificationPage() {
         title="Driver access required"
         introduction="Enable driver capability in your profile before completing qualification."
       >
-        <Link to="/profile">Go to your profile</Link>
+        <Link className="button button-secondary" to="/profile">
+          Go to your profile
+        </Link>
       </ProviderLayout>
     );
   return (
@@ -130,23 +176,34 @@ export function DriverQualificationPage() {
         <p role="status">Loading qualification…</p>
       ) : (
         <>
-          <p>
-            Qualification: <StatusBadge>{driver?.verificationStatus ?? 'DRAFT'}</StatusBadge>
-          </p>
+          <section className="qualification-status" aria-label="Qualification status">
+            <div className="detail-heading">
+              <div>
+                <p className="section-kicker">Current status</p>
+                <h2>{summary.title}</h2>
+              </div>
+              <StatusBadge>{status}</StatusBadge>
+            </div>
+            <p>{summary.guidance}</p>
+          </section>
           {driver?.verificationStatus === 'REJECTED' && driver.verificationReason && (
-            <section aria-label="Review feedback">
+            <section className="review-feedback" aria-label="Review feedback">
               <h2>Review feedback</h2>
               <p>{driver.verificationReason}</p>
             </section>
           )}
           <form
+            className="qualification-form"
             key={driver?.id ?? 'new'}
             onSubmit={(event) => void save(event)}
             aria-label="Driver qualification"
           >
-            <h2>License and service details</h2>
-            <fieldset disabled={busy || driver?.verificationStatus === 'PENDING'}>
-              <legend>Private license details</legend>
+            <div className="form-heading">
+              <h2>License and service details</h2>
+              <p>Private identifiers are used for administrator review only.</p>
+            </div>
+            <fieldset disabled={busy || status === 'PENDING'}>
+              <legend>License details</legend>
               <Field
                 id="licenseNumber"
                 name="licenseNumber"
@@ -155,44 +212,53 @@ export function DriverQualificationPage() {
                 maxLength={40}
                 required
               />
-              <Field
-                id="licenseCountry"
-                name="licenseCountry"
-                label="License country code"
-                hint="Two uppercase letters, for example IN."
-                defaultValue={driver?.licenseCountry ?? 'IN'}
-                pattern="[A-Z]{2}"
-                minLength={2}
-                maxLength={2}
-                required
-              />
-              <Field
-                id="licenseExpiresOn"
-                name="licenseExpiresOn"
-                label="License expiry date"
-                type="date"
-                defaultValue={driver?.licenseExpiresOn ?? ''}
-                required
-              />
-              <CitySelect name="serviceCityId" defaultValue={driver?.cityId ?? ''} />
-              <Field
-                id="hourlyRate"
-                name="hourlyRate"
-                label="Hourly rate (INR)"
-                type="number"
-                min="0.01"
-                max="100000"
-                step="0.01"
-                defaultValue={
-                  driver?.hourlyRateMinor ? (driver.hourlyRateMinor / 100).toFixed(2) : ''
-                }
-                required
-              />
+              <div className="form-columns">
+                <Field
+                  id="licenseCountry"
+                  name="licenseCountry"
+                  label="License country code"
+                  hint="Two uppercase letters, for example IN."
+                  defaultValue={driver?.licenseCountry ?? 'IN'}
+                  pattern="[A-Z]{2}"
+                  minLength={2}
+                  maxLength={2}
+                  required
+                />
+                <Field
+                  id="licenseExpiresOn"
+                  name="licenseExpiresOn"
+                  label="License expiry date"
+                  type="date"
+                  defaultValue={driver?.licenseExpiresOn ?? ''}
+                  required
+                />
+              </div>
+            </fieldset>
+            <fieldset disabled={busy || status === 'PENDING'}>
+              <legend>Service details</legend>
+              <div className="form-columns">
+                <CitySelect name="serviceCityId" defaultValue={driver?.cityId ?? ''} />
+                <Field
+                  id="hourlyRate"
+                  name="hourlyRate"
+                  label="Hourly rate (INR)"
+                  type="number"
+                  min="0.01"
+                  max="100000"
+                  step="0.01"
+                  defaultValue={
+                    driver?.hourlyRateMinor ? (driver.hourlyRateMinor / 100).toFixed(2) : ''
+                  }
+                  required
+                />
+              </div>
               <p className="small-text">Payment not collected by DriveHire.</p>
+            </fieldset>
+            <div className="form-actions">
               <Button type="submit" busy={busy}>
                 Save driver details
               </Button>
-            </fieldset>
+            </div>
           </form>
           {driver && (
             <>
@@ -202,27 +268,35 @@ export function DriverQualificationPage() {
                 status={driver.verificationStatus}
                 onChanged={reload}
               />
-              <section className="profile-section">
-                <h2>Public availability</h2>
+              <section className="qualification-listing">
+                <div className="section-heading">
+                  <h2>Public availability</h2>
+                  <StatusBadge>
+                    {driver.acceptingBookings ? 'Accepting bookings' : 'Paused'}
+                  </StatusBadge>
+                </div>
                 <p>
                   {driver.acceptingBookings
                     ? 'Your listing is accepting bookings.'
                     : 'Your listing is paused.'}{' '}
                   Set your driving schedule separately.
                 </p>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={
-                    busy || (!driver.acceptingBookings && driver.verificationStatus !== 'APPROVED')
-                  }
-                  onClick={() => void listing()}
-                >
-                  {driver.acceptingBookings ? 'Pause listing' : 'Accept bookings'}
-                </Button>
-                <p>
-                  <Link to="/driver/availability">Manage your driving schedule</Link>
-                </p>
+                <div className="form-actions">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={
+                      busy ||
+                      (!driver.acceptingBookings && driver.verificationStatus !== 'APPROVED')
+                    }
+                    onClick={() => void listing()}
+                  >
+                    {driver.acceptingBookings ? 'Pause listing' : 'Accept bookings'}
+                  </Button>
+                  <Link className="button button-secondary" to="/driver/availability">
+                    Manage your driving schedule
+                  </Link>
+                </div>
               </section>
             </>
           )}

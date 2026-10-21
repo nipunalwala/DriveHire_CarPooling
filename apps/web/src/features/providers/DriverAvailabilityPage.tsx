@@ -1,9 +1,22 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { Clock } from 'lucide-react';
 import { AvailabilitySchema, type AvailabilityDto } from '@drivehire/contracts';
 import { api } from '../../api/client.js';
 import { useAuth } from '../../auth/AuthProvider.js';
 import { Button, EmptyState, ErrorState, Field, StatusBadge } from '../../components/ui/index.js';
+import { PageHeading } from '../../components/PageHeading.js';
+import { Pages } from './ProviderLayout.js';
+
+const dateTime = (value: string) =>
+  new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
 
 export function DriverAvailabilityPage() {
   const { user } = useAuth();
@@ -96,87 +109,129 @@ export function DriverAvailabilityPage() {
 
   if (!allowed)
     return (
-      <section className="profile-layout">
-        <div>
-          <h1>Driver access required</h1>
-          <p>Enable driver capability in your profile to manage a schedule.</p>
-          <Link to="/profile">Go to your profile</Link>
-        </div>
+      <section className="workspace-page">
+        <PageHeading
+          title="Driver access required"
+          introduction="Enable driver capability in your profile to manage a schedule."
+        >
+          <Link className="button button-secondary" to="/profile">
+            Go to your profile
+          </Link>
+        </PageHeading>
       </section>
     );
   return (
-    <section className="profile-layout schedule-page">
-      <div>
-        <Link to="/profile">Your profile</Link>
-        <h1>Your driving schedule</h1>
-        <p>Set the times you can drive and protect the times you need to keep free.</p>
-        <p>All times are shown in {timezone}. Approval is required before accepting bookings.</p>
-      </div>
-      <div className="profile-content">
-        {error && <ErrorState message={error} />}
-        {notice && (
-          <p className="success-state" role="status">
-            {notice}
-          </p>
-        )}
-        <form onSubmit={(event) => void save(event)} aria-label="Add schedule window">
-          <h2>Add a time window</h2>
-          <Field id="startsAt" name="startsAt" label="Starts" type="datetime-local" required />
-          <Field id="endsAt" name="endsAt" label="Ends" type="datetime-local" required />
-          <fieldset disabled={busy}>
-            <legend>How should this time be used?</legend>
-            <label>
-              <input type="radio" name="kind" value="AVAILABLE" defaultChecked /> Available to drive
-            </label>
-            <label>
-              <input type="radio" name="kind" value="BLOCKED" /> Keep this time free
-            </label>
-          </fieldset>
-          <p className="small-text">
-            Blocked time cannot overlap an existing booking or shared journey.
-          </p>
-          <Button type="submit" busy={busy}>
-            Save time window
-          </Button>
-        </form>
-        <section className="profile-section" aria-busy={loading}>
-          <h2>Saved windows</h2>
-          <Button
-            variant="secondary"
-            disabled={loading || busy}
-            onClick={() => {
-              setError('');
-              setRevision((value) => value + 1);
-            }}
+    <section className="workspace-page schedule-page">
+      <PageHeading
+        title="Your driving schedule"
+        introduction="Set the times you can drive and protect the times you need to keep free."
+      >
+        <p className="page-note">
+          All times are shown in {timezone}. Approval is required before accepting bookings.
+        </p>
+      </PageHeading>
+      <div className="availability-workspace">
+        <div className="schedule-form-column">
+          {error && <ErrorState message={error} />}
+          {notice && (
+            <p className="success-state" role="status">
+              {notice}
+            </p>
+          )}
+          <form
+            className="schedule-form"
+            onSubmit={(event) => void save(event)}
+            aria-label="Add schedule window"
           >
-            Reload schedule
-          </Button>
+            <div className="form-heading">
+              <h2>Add a time window</h2>
+              <p>Available time can be offered for work. Blocked time stays free.</p>
+            </div>
+            <div className="form-columns">
+              <Field id="startsAt" name="startsAt" label="Starts" type="datetime-local" required />
+              <Field id="endsAt" name="endsAt" label="Ends" type="datetime-local" required />
+            </div>
+            <p className="timezone-note">
+              <Clock size={18} aria-hidden="true" />
+              Create and review times in {timezone}.
+            </p>
+            <fieldset disabled={busy}>
+              <legend>How should this time be used?</legend>
+              <label>
+                <input type="radio" name="kind" value="AVAILABLE" defaultChecked />
+                <span>
+                  <strong>Available to drive</strong>
+                  <small>Offer this period for new driving work.</small>
+                </span>
+              </label>
+              <label>
+                <input type="radio" name="kind" value="BLOCKED" />
+                <span>
+                  <strong>Keep this time free</strong>
+                  <small>Protect this period from overlapping work.</small>
+                </span>
+              </label>
+            </fieldset>
+            <p className="small-text">
+              Blocked time cannot overlap an existing booking or shared journey.
+            </p>
+            <div className="form-actions">
+              <Button type="submit" busy={busy}>
+                Save time window
+              </Button>
+            </div>
+          </form>
+        </div>
+        <section className="schedule-windows" aria-busy={loading}>
+          <div className="section-heading">
+            <div>
+              <h2>Saved windows</h2>
+              <p>Times remain in {timezone}.</p>
+            </div>
+            <Button
+              variant="ghost"
+              disabled={loading || busy}
+              onClick={() => {
+                setError('');
+                setRevision((value) => value + 1);
+              }}
+            >
+              Reload schedule
+            </Button>
+          </div>
           {loading ? (
             <p role="status">Loading your schedule…</p>
           ) : windows.length === 0 ? (
             <EmptyState title="No time windows yet">
-              Add your first available or blocked period above.
+              Add your first available or blocked period in the form.
             </EmptyState>
           ) : (
-            <ul>
+            <ul className="window-list">
               {windows.map((window) => (
                 <li key={window.id}>
-                  <p>
+                  <div className="window-heading">
                     <StatusBadge>
-                      {window.kind === 'AVAILABLE' ? 'Available' : 'Blocked'}
+                      {window.kind === 'AVAILABLE' ? 'Available to drive' : 'Keep this time free'}
                     </StatusBadge>
-                  </p>
-                  <p>
-                    <time dateTime={window.startsAt}>
-                      {new Date(window.startsAt).toLocaleString()}
-                    </time>{' '}
-                    –{' '}
-                    <time dateTime={window.endsAt}>{new Date(window.endsAt).toLocaleString()}</time>
-                  </p>
+                  </div>
+                  <dl className="window-facts">
+                    <div>
+                      <dt>Starts</dt>
+                      <dd>
+                        <time dateTime={window.startsAt}>{dateTime(window.startsAt)}</time>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Ends</dt>
+                      <dd>
+                        <time dateTime={window.endsAt}>{dateTime(window.endsAt)}</time>
+                      </dd>
+                    </div>
+                  </dl>
                   <Button
-                    variant="secondary"
+                    variant="ghost"
                     disabled={busy}
-                    aria-label={`Remove window starting ${new Date(window.startsAt).toLocaleString()}`}
+                    aria-label={`Remove window starting ${dateTime(window.startsAt)}`}
                     onClick={() => void remove(window.id)}
                   >
                     Remove window
@@ -185,23 +240,12 @@ export function DriverAvailabilityPage() {
               ))}
             </ul>
           )}
-          <nav aria-label="Schedule pages">
-            <Button
-              variant="secondary"
-              disabled={page === 1 || loading || busy}
-              onClick={() => setPage((value) => value - 1)}
-            >
-              Previous
-            </Button>
-            <span> Page {page} </span>
-            <Button
-              variant="secondary"
-              disabled={!hasMore || loading || busy}
-              onClick={() => setPage((value) => value + 1)}
-            >
-              Next
-            </Button>
-          </nav>
+          <Pages
+            page={page}
+            hasMore={hasMore}
+            busy={loading || busy}
+            onPage={(value) => setPage(value)}
+          />
         </section>
       </div>
     </section>

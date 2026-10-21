@@ -1,36 +1,23 @@
 import { useEffect, useState, type ReactNode, type SelectHTMLAttributes } from 'react';
-import { Link } from 'react-router-dom';
 import { CitySchema, type CityDto } from '@drivehire/contracts';
 import { api } from '../../api/client.js';
-import { useAuth } from '../../auth/AuthProvider.js';
 import { Button, ErrorState } from '../../components/ui/index.js';
+import { PageHeading } from '../../components/PageHeading.js';
 
 export function ProviderLayout({
   title,
   introduction,
+  actions,
   children,
 }: {
   title: string;
   introduction: string;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
-  const { user } = useAuth();
   return (
-    <section className="profile-layout provider-page">
-      <div>
-        <Link to="/profile">Your profile</Link>
-        <h1>{title}</h1>
-        <p>{introduction}</p>
-        <nav className="task-navigation" aria-label="Provider tasks">
-          <Link to="/vehicles">Personal vehicles</Link>
-          {user?.roles.includes('DRIVER') && (
-            <>
-              <Link to="/driver/qualification">Driver qualification</Link>
-              <Link to="/driver/availability">Driving schedule</Link>
-            </>
-          )}
-        </nav>
-      </div>
+    <section className="workspace-page provider-page">
+      <PageHeading title={title} introduction={introduction} actions={actions} />
       <div className="profile-content">{children}</div>
     </section>
   );
@@ -131,6 +118,7 @@ export function Pages({
   busy: boolean;
   onPage(page: number): void;
 }) {
+  if (page === 1 && !hasMore) return null;
   return (
     <nav className="page-controls" aria-label="List pages">
       <Button
