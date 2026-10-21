@@ -271,7 +271,7 @@ export function DriverQualificationPage() {
               <section className="qualification-listing">
                 <div className="section-heading">
                   <h2>Public availability</h2>
-                  <StatusBadge>
+                  <StatusBadge status={driver.acceptingBookings ? 'ACTIVE' : 'PAUSED'}>
                     {driver.acceptingBookings ? 'Accepting bookings' : 'Paused'}
                   </StatusBadge>
                 </div>

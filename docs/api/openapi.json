@@ -12476,6 +12476,14 @@
             "type": "string",
             "minLength": 12,
             "maxLength": 128
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "CUSTOMER",
+              "DRIVER"
+            ],
+            "default": "CUSTOMER"
           }
         },
         "required": [

@@ -68,7 +68,9 @@ export function ProfilePage() {
         introduction="Manage the details and access attached to your account."
       >
         <div className="account-identity">
-          <StatusBadge>{user.emailVerified ? 'Email verified' : 'Email not verified'}</StatusBadge>
+          <StatusBadge status={user.emailVerified ? 'APPROVED' : 'PENDING'}>
+            {user.emailVerified ? 'Email verified' : 'Email not verified'}
+          </StatusBadge>
           <span className="account-email">{user.email}</span>
         </div>
       </PageHeading>

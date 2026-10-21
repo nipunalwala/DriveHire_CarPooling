@@ -625,6 +625,7 @@ textarea {
 /* ─── Form fields ────────────────────────────────────────────────── */
 .field {
   display: grid;
+  align-content: start;
   gap: 8px;
   min-width: 0;
 }
@@ -822,8 +823,10 @@ form {
   text-transform: uppercase;
 }
 
-.status-badge,
 .status-badge[data-status='ACTIVE'],
+.status-badge[data-status='CLEAN'],
+.status-badge[data-status='AVAILABLE'],
+.status-badge[data-status='ACCEPTED'],
 .status-badge[data-status='OPEN'],
 .status-badge[data-status='APPROVED'],
 .status-badge[data-status='CONFIRMED'],
@@ -834,7 +837,10 @@ form {
   color: #165a30;
 }
 
-.status-badge[data-status='DRAFT'] {
+.status-badge,
+.status-badge[data-status='DRAFT'],
+.status-badge[data-status='PAUSED'],
+.status-badge[data-status='BLOCKED'] {
   background: #e8edf0;
   border-color: #cfd9df;
   color: #3d5060;
@@ -844,7 +850,8 @@ form {
 .status-badge[data-status='CANCELLED'],
 .status-badge[data-status='REJECTED'],
 .status-badge[data-status='EXPIRED'],
-.status-badge[data-status='FAILED'] {
+.status-badge[data-status='FAILED'],
+.status-badge[data-status='SUSPENDED'] {
   background: #fde8e4;
   border-color: #f5c5c0;
   color: #7a2020;

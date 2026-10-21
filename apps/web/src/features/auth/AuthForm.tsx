@@ -204,7 +204,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
               <label>
                 <input
                   type="radio"
-                  name="role"
+                  name="registrationRole"
                   value="CUSTOMER"
                   checked={registrationRole === 'CUSTOMER'}
                   onChange={() => setRegistrationRole('CUSTOMER')}

@@ -282,7 +282,9 @@ export function createAccountsService({
             data: { email, displayName: payload.displayName, passwordHash: passwordHashed },
             select: { id: true },
           });
-          await tx.userRole.create({ data: { userId: user.id, role: 'PASSENGER' } });
+          await tx.userRole.create({
+            data: { userId: user.id, role: payload.role === 'DRIVER' ? 'DRIVER' : 'PASSENGER' },
+          });
           const now = new Date();
           const challenge = await tx.authChallenge.create({
             data: {

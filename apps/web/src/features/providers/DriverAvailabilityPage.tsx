@@ -210,7 +210,7 @@ export function DriverAvailabilityPage() {
               {windows.map((window) => (
                 <li key={window.id}>
                   <div className="window-heading">
-                    <StatusBadge>
+                    <StatusBadge status={window.kind}>
                       {window.kind === 'AVAILABLE' ? 'Available to drive' : 'Keep this time free'}
                     </StatusBadge>
                   </div>

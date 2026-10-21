@@ -6,7 +6,7 @@ import { api } from '../api/client.js';
 
 type AuthState = { user: UserDto | null; ready: boolean };
 type AuthContextValue = AuthState & {
-  login(email: string, password: string): Promise<void>;
+  login(email: string, password: string): Promise<UserDto>;
   logout(): Promise<void>;
   setUser(user: UserDto): void;
 };
@@ -93,14 +93,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async login(email, password) {
         // Invalidate earlier snapshot reads as soon as the user starts a new login.
         authGeneration++;
-        await coordinateAuth(async () => {
+        return coordinateAuth(async () => {
           try {
-            acceptSession(
-              await api.request('/auth/login', {
-                method: 'POST',
-                body: JSON.stringify({ email, password }),
-              }),
-            );
+            const result = await api.request('/auth/login', {
+              method: 'POST',
+              body: JSON.stringify({ email, password }),
+            });
+            acceptSession(result);
+            return state.user as UserDto;
           } catch (cause) {
             if (!state.ready) publish({ user: state.user, ready: true });
             throw cause;
@@ -139,7 +139,9 @@ export function useAuth() {
   return context;
 }
 
-export function ProtectedRoute({ children }: { children: ReactNode }) {
+type RequiredRole = 'DRIVER' | 'ADMIN' | 'CUSTOMER';
+
+export function ProtectedRoute({ children, role }: { children: ReactNode; role?: RequiredRole }) {
   const { user, ready } = useAuth();
   const location = useLocation();
   if (!ready) return <p role="status">Restoring your session…</p>;
@@ -150,5 +152,15 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
         replace
       />
     );
+  const roleAllowed =
+    role === 'CUSTOMER' ? !user.roles.includes('DRIVER') : role ? user.roles.includes(role) : true;
+  if (role && !roleAllowed) {
+    return (
+      <Navigate
+        to={user.roles.includes('DRIVER') ? '/app/driver/dashboard' : '/app/dashboard'}
+        replace
+      />
+    );
+  }
   return children;
 }

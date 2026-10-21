@@ -8,6 +8,7 @@ export const RegisterInputSchema = z.strictObject({
   displayName: z.string().min(1).max(80),
   email: z.email().max(254),
   password: z.string().min(12).max(128),
+  role: z.enum(['CUSTOMER', 'DRIVER']).optional().default('CUSTOMER'),
 });
 export const LoginInputSchema = z.strictObject({
   email: z.email().max(254),

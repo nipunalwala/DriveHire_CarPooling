@@ -105,8 +105,14 @@ export function EmptyState({ title, children }: { title: string; children: React
     </div>
   );
 }
-export function StatusBadge({ children }: { children: React.ReactNode }) {
-  const status = typeof children === 'string' ? children : undefined;
+export function StatusBadge({
+  children,
+  status: canonicalStatus,
+}: {
+  children: React.ReactNode;
+  status?: string;
+}) {
+  const status = canonicalStatus ?? (typeof children === 'string' ? children : undefined);
   return (
     <span className="status-badge" data-status={status}>
       {children}

@@ -48,7 +48,7 @@ export function statusLabel(value: string) {
 }
 
 export function JourneyStatus({ status }: { status: string }) {
-  return <StatusBadge>{statusLabel(status)}</StatusBadge>;
+  return <StatusBadge status={status}>{statusLabel(status)}</StatusBadge>;
 }
 
 export function JourneyTime({ value }: { value: string }) {

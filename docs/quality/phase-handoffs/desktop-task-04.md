@@ -10,6 +10,7 @@ Refined the four account/setup surfaces within the existing `WorkspaceLayout` an
 Files: `apps/web/src/components/PageHeading.tsx`, `apps/web/src/components/ui/index.tsx`, `apps/web/src/features/providers/ProviderLayout.tsx`, `apps/web/src/features/profile/ProfilePage.tsx`, `apps/web/src/features/providers/VehiclesPage.tsx`, `apps/web/src/features/providers/DriverQualificationPage.tsx`, `apps/web/src/features/providers/EvidencePanel.tsx`, `apps/web/src/features/providers/DriverAvailabilityPage.tsx`, scoped rules in `apps/web/src/styles.css`, `apps/web/src/features/profile/ProfilePage.test.tsx`, `apps/web/src/features/providers/ProviderWorkflows.test.tsx`, and the existing `apps/web/src/features/providers/QualificationFeedback.test.tsx` selectors.
 
 Verification (portable Node 24.22.0, direct binaries; PowerShell npm shims bypassed):
+
 - Focused web tests: 3 files, 18/18 passed. Covers profile save payload, error value preservation, passenger/driver/admin role links, five qualification lifecycle states, qualification save/version and stale-version preservation, vehicle add/save/selection, populated evidence next-step, availability save/persisted window and conflict preservation.
 - Web typecheck: passed (`tsc -p apps/web/tsconfig.json --noEmit`).
 - Scoped ESLint on the 11 changed TS/TSX files: passed.
